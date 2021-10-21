@@ -22,5 +22,6 @@ includet("streamer.jl")
 Streamer.main()
 ```
 * Currently all configuration is defined in the `main` function in `streamer.jl`, which is a bit messy.
+* To use several cores start julia as `julia -t N` with `N` the number of cores or `julia -t auto` to use all cores in the machine.
 
 
