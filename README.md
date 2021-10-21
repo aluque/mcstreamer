@@ -24,4 +24,16 @@ Streamer.main()
 * Currently all configuration is defined in the `main` function in `streamer.jl`, which is a bit messy.
 * To use several cores start julia as `julia -t N` with `N` the number of cores or `julia -t auto` to use all cores in the machine.
 
+## Output / plotting
+* The simulation outputs files called `0001.jld`, `0002.jld`...
+* To load them after a simulation:
+```julia
+includet("streamer.jl") # (If not already done).
+data = load("0001.jld")
+
+# To plot:
+Streamer.plot(data["fields"])
+```
+
+
 
