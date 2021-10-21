@@ -8,13 +8,26 @@ using Multigrid
 using OffsetArrays
 import PyPlot as plt
 using LaTeXStrings
+using JLD2
+using CodecZlib
+using Formatting
+using Logging
+using Dates
 
 using JuMC: Population, CollisionTable, load_lxcat, init!, advance!, collisions!,
     Electron, add_particle!
-using JuMC: collrates, repack!, meanenergy, CollisionPopulation,
+using JuMC: collrates, repack!, meanenergy, weight, actives, CollisionPopulation,
     IonizationOutcome, AttachmentOutcome, AbstractOutcome, Particle
 import JuMC: track, AbstractCollisionTracker
 using BenchmarkTools
+
+include("timesteps.jl")
+
+function logfmt(level, _module, group, id, file, line)
+    return (:blue, format("{:<23}:", string(Dates.now())), "")
+end
+
+
 
 struct Grid{T}
     R::T
@@ -28,7 +41,7 @@ struct Grid{T}
     zc::StepRangeLen{T, T, T}
     zf::StepRangeLen{T, T, T}
 
-    function Grid(L::T, R::T, M, N) where T
+    function Grid(R::T, L::T, M, N) where T
         SRL = StepRangeLen{T, T, T}
         rf = range(0, stop=R, length=M + 1)
         zf = range(0, stop=L, length=N + 1)
@@ -40,6 +53,11 @@ struct Grid{T}
     end
 end
 
+@inline function inside(grid::Grid, x)
+    @unpack rf, zf = grid
+    r = rcyl(x)
+    (rf[1] < r < rf[end]) && (zf[1] < x[3] < zf[end])
+end
 
 """
     Allocate an array for a field evaluated at cell centers of a `grid`, 
@@ -67,6 +85,7 @@ calloc_faces(T, grid::Grid, g::Int=1) = zeros(T, (1 - g):(grid.M + g + 1),
 dr(grid::Grid) = step(grid.rc)
 dz(grid::Grid) = step(grid.zc)
 dV(grid::Grid, i) = 2π * grid.rc[i] * dr(grid) * dz(grid)
+rcyl(x) = sqrt(x[1]^2 + x[2]^2)
 
 
 """
@@ -91,21 +110,40 @@ function cellindext(grid, r)
 end
 
 
+"""
+    A container for all fields located on a grid.
 
-struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T}}
+    Some fields (of type `A1`) contain an extra dimension for the thread id, 
+    which allows to update in parallel.
+"""
+struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{Int}}
     grid::Grid{T}
     
+    # Fixed charges
     qfixed::A1
+
+    # Charges associated with mobile particles.
     qpart::A1
 
+    # Charge density
     q::A
+
+    # Electrostatic potential
     u::A
     
+    # r-component of the electric field
     er::A
+
+    # z-component of the electric field
     ez::A
 
+    # For Russian roulette; accumulator to reduce the surviving probability.
     c::A
-    
+
+    # For Russian roulette; counter of particles inside each cell.
+    p::AI
+
+    """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
         qfixed = calloc_centers_threads(T, grid)
         qpart = calloc_centers_threads(T, grid)
@@ -114,12 +152,15 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T}}
         c = calloc_centers(T, grid)
         er = calloc_faces(T, grid)
         ez = calloc_faces(T, grid)
-                
-        new{T,typeof(qfixed),typeof(q)}(grid, qfixed, qpart, q, u, er, ez, c)
+        p = calloc_faces(Int, grid)
+        
+        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q, u, er, ez, c, p)
     end
 end
 
-
+"""
+    A callable to use for field interpolations.
+"""
 struct FieldInterp{GF <: GridFields}
     fields::GF
 end
@@ -130,7 +171,9 @@ end
     Uses bi-linear interpolation of each of the r/z-components.
 """
 function (fieldinterp::FieldInterp)(x)
+    inside(fieldinterp.fields.grid, x) || return zero(SVector{3, eltype(x)})
     r = sqrt(x[1]^2 + x[2]^2)
+    
 
     grid = fieldinterp.fields.grid
     fields = fieldinterp.fields
@@ -171,6 +214,11 @@ function (fieldinterp::FieldInterp)(x)
 end
 
 
+"""
+    A tracker is called whenerever a particle experiences a collision.
+    This is useful for example to keep track of fixed charges left at the
+    collision location.
+"""
 struct CollisionTracker{S <: GridFields}
     fields::S
 end
@@ -190,24 +238,33 @@ track(tracker::CollisionTracker, ::IonizationOutcome, x, p, w) =
 track(tracker::CollisionTracker, ::AttachmentOutcome, x, p, w) =
     track1(tracker.fields, x, -w)
 
+function start()
+    logger = ConsoleLogger(meta_formatter=logfmt)
+    with_logger(logger) do
+        main()
+    end
+end
 
 function main()
-    L = 5e-3
+    L = 4e-2
+    R = 5e-3
+    
     n = 10000
     
     densities = Dict("N2" => co.nair * 0.79,
                      "O2" => co.nair * 0.21)
-
+    
     # Create the energy grid in eV; all cross-sections are interpolated into
     # this grid
     energy = (0:0.01:1000) .* co.eV
-        
-    proc, rate, maxrate = load_lxcat("LXCat-June2013.json", densities, energy)
+    
+    csfile = joinpath(@__DIR__, "LXCat-June2013.json")
+    proc, rate, maxrate = load_lxcat(csfile, densities, energy)
     ecolls = CollisionTable(proc, energy, rate, maxrate)
-
+    
     Δt = 10^floor(log10(1 / (2 * ecolls.maxrate)))
     @show Δt
-    tmax = 5e-9
+    tmax = 50e-9
     eb = -150 * co.Td * co.nair
     
     T = Float64
@@ -221,17 +278,20 @@ function main()
                       zeros(SVector{3, T}, maxp),
                       ones(T, maxp),
                       zeros(Int, maxp))
-
-    epop.x .= Ref(@SVector [0.0, 0.0, L / 4])
+    
+    σx = R / 16
+    for i in eachindex(epop)
+        epop.x[i] = @SVector [σx * randn(), σx * randn(), L / 8 + σx * randn()]
+    end
     
     pind = (electron = CollisionPopulation(ecolls, epop),)
     init!(pind, Electron(), Δt)
-
-    grid = Grid(L, L, 512, 512)
+    
+    grid = Grid(R, L, 512, 8 * 512)
     fields = GridFields(grid)
     density!(grid, fields.qfixed, pind, Electron(), 1.0)
-
-
+    
+    
     # Poisson
     bc = ((LeftBnd(), Dirichlet()),
           (RightBnd(), Dirichlet()),
@@ -246,44 +306,72 @@ function main()
                   smooth2=3,
                   verbosity=0,
                   g=1)    
-    @show mg.s
     
     ws = Multigrid.allocate(mg, parent(fields.q));
-
+    
     efield = FieldInterp(fields)
-
-    nsteps(pind, Int(fld(tmax, Δt)), efield, eb, Δt, fields, mg, ws)
+    Δt_poisson, Δt_output, Δt_resample = 1e-12, 1e-9, 1e-11
     
-    #k = collrates(pind, Electron())
+    nsteps(pind, Int(fld(tmax, Δt)), efield, eb, Δt,
+           Δt_poisson, Δt_output, Δt_resample,
+           fields, mg, ws)
+    
+    # k = collrates(pind, Electron())
     density!(grid, fields.qpart, pind, Electron(), -1.0)
-    
+
     (;pind, efield, Δt, fields)
 end
 
 
-function nsteps(pind, n, efield, eb, Δt, fields, mg, ws)
+"""
+    Advance the simulation by `n` steps.
+
+    Parameters:
+    * `pind` a particle population.
+    * `n`: number of sterps.
+    * `efield`: Electric field interpolator.    
+    * `eb`: Background electric field.
+    * `Δt`: Time-step at which the particles are updated.
+    * `Δt_poisson`, `Δt_output`, `Δt_resample`: Time steps for updatting
+      the electrostatic field, outputting data and resampling particles.
+    * `fields`: A GridFields with space for all fields.
+    * `mg`: A Multigrid (MG) solver.
+    * `ws`: Working space for the MG solver.
+"""
+function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
+                fields, mg, ws)
+
     ecolls = pind.electron.colls
     epop = pind.electron.pop
     tracker = CollisionTracker(fields)
-    γ = 0.99
+    γ = 1 - 1 / 10000
+
+    poisson = TimeStepper(Δt_poisson)
+    output = TimeStepper(Δt_output)
+    resample = TimeStepper(Δt, Δt_resample)
     
     for i in 1:n
-        if ((i - 1) % 100 == 0)
+        t = (i - 1) * Δt
+        
+        atstep(poisson, t) do _
             poisson!(fields, pind, eb, mg, ws)
         end
         
-        if ((i - 1) % 10000 == 0)
-            active_superparticles = count(epop.active)
-            physical_particles = sum(epop.w[epop.active])
-            @info "$((i - 1) * Δt * 1e9) ns"  active_superparticles physical_particles
-
+        atstep(output, t) do j
+            jldsave(fmt("04d", j) * ".jld", true; fields)
+            
+            active_superparticles = actives(epop)
+            physical_particles = weight(epop)
+            @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
         end
+        
         advance!(pind, Electron(), efield, Δt)
         collisions!(pind, Electron(),  Δt, tracker)
 
-        if (i > 0 && (i - 1) % 10000 == 0)
+        atstep(resample, t) do _
             resample!(pind, fields, Electron(), γ)
             repack!(epop)
+            shuffle!(epop)
         end
         
         for part in keys(pind)            
@@ -296,6 +384,9 @@ function nsteps(pind, n, efield, eb, Δt, fields, mg, ws)
 end
 
 
+"""
+    Solve Poisson equation and compute the electrostatic fields.
+"""
 function poisson!(fields, pind, eb, mg, ws)
     g = mg.g
     @unpack grid, u, er, ez = fields
@@ -328,73 +419,145 @@ function poisson!(fields, pind, eb, mg, ws)
 end
 
 
+"""
+    Update array `arr` with the densities of particles of type 
+    `particle` contained in `pind`.
+"""
 function density!(grid, arr, pind, particle::Particle{sym},
                   val=1.0) where sym
     @unpack pop, colls = pind[sym]
 
     @inbounds Threads.@threads for i in eachindex(pop)
         pop.active[i] || continue
-
         I = cellindext(grid, pop.x[i])
-        arr[I] += val / dV(grid, I[1])
+
+        checkbounds(Bool, arr, I) || continue
+        
+        arr[I] += pop.w[i] * val / dV(grid, I[1])
     end        
 end
 
 
-function resample!(pind, fields, particle::Particle{sym}, γ) where sym
-    @unpack pop, colls = pind[sym]    
-    @unpack grid, c, qfixed = fields
-
-    c .= 1.0
-    wn = ((0.0, 0),
-          (0.5, 2),
-          (1.0, 1),
-          (2.0, 1))
-
+"""
+    Allocate and fill an array with the count of `particle` contained
+    in `pind`.
+"""
+function count(grid, pind, particle::Particle{sym}) where sym
+    @unpack pop, colls = pind[sym]
+    ctr = calloc_centers(Int, grid)
+    
     for i in eachindex(pop)
         pop.active[i] || continue
 
         I = cellindex(grid, pop.x[i])
+        ctr[I] += 1
+    end
 
-        f = (pop.w[i] > 1) ? 2 : 1        
-        n0 = 0.5 * (1 + f * c[I])
+    ctr
+end
+
+"""
+    Resample the population of `particle` inside `pind` using 
+    Russian roulette and splitting.
+"""
+function resample!(pind, fields, particle::Particle{sym}, γ) where sym
+    @unpack pop, colls = pind[sym]    
+    @unpack grid, c, p = fields
+
+    c .= 1.0
+    p .= 0
+    
+    for i in eachindex(pop)
+        pop.active[i] || continue
+
+        I = cellindex(grid, pop.x[i])
+        checkbounds(Bool, c, I) || continue
+        
+        #f = (pop.w[i] > 2) ? 1.1 : 1
+        f = 1
+        n0 = f * c[I]
         c[I] *= γ
 
-        if n0 < 1
-            p = @SVector [1 - n0,
-                          0.0,
-                          2 * (n0 - 0.5),
-                          1 - n0]
+        ξ = rand()
+        
+        if n0 <= 1
+            if ξ > n0
+                pi = p[I]
+
+                @assert pi > 0
+                wt = pop.w[pi] + pop.w[i]
+                nw, pnw = pop.w[i] / wt, pop.w[pi] / wt
+
+                # Because we use 2.5d we cannot average the locations because
+                # they will concentrate on the axes; we average their
+                # cylindrical components.
+                # pop.x[pi] = cylavg(pop.x[i], pop.x[pi], nw, pnw)
+                # pop.p[pi] = cylavg(pop.p[i], pop.p[pi], nw, pnw)
+
+                pop.x[pi], pop.p[pi] = choose(pop.x[i], pop.x[pi],
+                                              pop.p[i], pop.p[pi], nw, pnw)
+                pop.w[pi] = wt
+                
+                pop.active[i] = false
+            else
+                p[I] = i
+            end
         else
-            p = @SVector [(n0 - 1) / 3,
-                          4 * (n0 - 1) / 3,
-                          2 * (1.5 - n0),
-                          (n0 - 1) / 3]
+            if ξ > 2 - n0
+                pop.w[i] /= 2
+                newi = add_particle!(pop, pop.p[i], pop.x[i], pop.w[i])
+                pop.s[newi] = pop.s[i]                
+                c[I] *= γ
+            end
+            
+            p[I] = i
         end
-        
-        s = sample(1:4, pweights(p))
-
-        w1, n1 = wn[s]
-        
-        wnew = pop.w[i] * w1
-        
-        if s == 1
-            pop.active[i] = false
-
-            # Ensure exact charge conservation
-            # qfixed[I, 1] -= pop.w[i] / dV(grid, I[1])
-        elseif s == 2
-            newi = add_particle!(pop, pop.p[i], pop.x[i], wnew)
-            pop.s[newi] = pop.s[i]
-        elseif s == 4
-            # Ensure exact charge conservation
-            # qfixed[I, 1] += pop.w[i] / dV(grid, I[1])            
-        end
-
-        pop.w[i] = wnew
-
     end
     
+end
+
+
+""" 
+    Average the cylindrical coordinates of two position given by cartesian
+    coordinates `x1` and `x2` using normalized weights `w1` and `w2`.
+"""
+@inline function cylavg(x1, x2, nw1, nw2)
+    r1, r2 = rcyl(x1), rcyl(x2)
+    θ1, θ2 = atan(x1[2], x1[1]), atan(x2[2], x2[1])
+
+    rm = nw1 * r1 + nw2 * r2
+    θm = nw1 * θ1 + nw2 * θ2
+    zm = nw1 * x1[3] + nw2 * x2[3]
+    sinθm, cosθm = sincos(θm)
+
+    @SVector [rm * cosθm, rm * sinθm, zm]
+end
+
+"""
+    Randomly choose a particle depending on normalized weights nw1, nw2
+    (normalized such that nw1 + nw2 = 1)
+"""
+@inline function choose(x1, x2, p1, p2, nw1, nw2)
+    if rand() < nw1
+        return (x1, p1)
+    else
+        return (x2, p2)
+    end
+end
+
+""" 
+    Shuffle a population using a permutation sampled from a uniform distribution
+    of permutations.
+"""
+function shuffle!(pop::Population)
+    n = length(pop)
+
+    for i in n:-1:2
+        j = rand(1:i)
+        pop.x[i], pop.x[j] = pop.x[j], pop.x[i]
+        pop.p[i], pop.p[j] = pop.p[j], pop.p[i]
+        pop.w[i], pop.w[j] = pop.w[j], pop.w[i]
+    end        
 end
 
 
@@ -402,12 +565,15 @@ function plot(fields)
     plt.matplotlib.pyplot.style.use("granada")
     M = fields.grid.M
     N = fields.grid.N
+    @show M N
     
     # qfixed_t = dropdims(sum(@view(fields.qfixed[1:M, 1:N, :]), dims=3), dims=3)
     # qpart_t = dropdims(sum(@view(fields.qpart[1:M, 1:N, :]), dims=3), dims=3)
 
     # q = qfixed_t .- qpart_t
     @unpack rf, zf, rc, zc = fields.grid
+    @show length(rc) length(zc)
+    @show rf[end] zf[end]
     
     plt.figure("Charge density")
     plt.pcolormesh(zf, rf, @view(fields.q[1:M, 1:N]))

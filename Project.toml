@@ -1,8 +1,12 @@
 [deps]
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 Constants = "97b6df43-329e-46a4-b57f-f766ebb68870"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+Formatting = "59287772-0a20-5a39-b81b-1366585eb4c0"
 GR = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 JuMC = "f59b32b4-cbd0-4f47-a058-e7dcfb659c8d"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Multigrid = "ff3b5ca6-ce97-402f-ba93-036070bf383f"
