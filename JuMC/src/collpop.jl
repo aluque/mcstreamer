@@ -11,7 +11,7 @@ end
 function init!(pind, particle::Particle{sym}, Δt) where sym
     @unpack pop, colls = pind[sym]
     
-    for i in eachindex(pop)
+    @threads for i in eachindex(pop)
         @inbounds pop.active[i] = true
         @inbounds pop.s[i] = round(Int, nextcol(colls.maxrate) / Δt)
     end
@@ -22,7 +22,7 @@ function advance!(pind, particle::Particle{sym}, efield, Δt) where sym
     
     @threads for i in eachindex(pop)
         @inbounds pop.active[i] || continue
-        @inbounds pop.x[i], pop.p[i] = advance_free(pop.particle, pop.x[i],
-                                                    pop.p[i], efield, Δt)
+        @inbounds pop.x[i], pop.v[i] = advance_free(pop.particle, pop.x[i],
+                                                    pop.v[i], efield, Δt)
     end
 end

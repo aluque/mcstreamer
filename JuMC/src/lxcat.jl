@@ -18,9 +18,7 @@ function load_lxcat(fname, densities, energy)
     # EFFECTIVE / ELASTIC problem
     targets = Dict()
 
-    γ = @. 1 + energy / mc2
-    β = @. sqrt(1 - 1 / (γ^2))
-    v = @. co.c * β
+    v = @. sqrt(2 * energy / mass(Electron()))
 
     nprocs = 0
     for item in db

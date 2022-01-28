@@ -7,7 +7,7 @@ mutable struct Population{P, T}
     n::Atomic{Int}
     
     active::Vector{Bool}
-    p::Vector{SVector{3, T}}
+    v::Vector{SVector{3, T}}
     x::Vector{SVector{3, T}}    
     w::Vector{T}
     
@@ -15,13 +15,13 @@ mutable struct Population{P, T}
     s::Vector{Int}
 end
 
-function Population(particle, n::Int, active, p, x, w, s)
-    Population(particle, Atomic{Int}(n), active, p, x, w, s)
+function Population(particle, n::Int, active, v, x, w, s)
+    Population(particle, Atomic{Int}(n), active, v, x, w, s)
 end
 
-function Population(particle, n::Int, active, p, x, s)
+function Population(particle, n::Int, active, v, x, s)
     w = fill(1.0, size(x))
-    Population(particle, n, active, p, x, w, s)
+    Population(particle, n, active, v, x, w, s)
 end
 
 
@@ -35,10 +35,10 @@ setlength!(p::Population, n) = p.n[] = n
 
 Add a particle to the population `pop` with momentum `p` and position `x`.
 """
-function add_particle!(pop::Population, p, x, w)
+function add_particle!(pop::Population, v, x, w)
     @assert pop.n[] < length(pop.active) "Maximum number of particles reached"
     nprev = atomic_add!(pop.n, 1)
-    pop.p[nprev + 1] = p
+    pop.v[nprev + 1] = v
     pop.x[nprev + 1] = x
     pop.w[nprev + 1] = w
 
@@ -81,7 +81,7 @@ function meanenergy(pop::Population{P, T}) where {P, T}
     nparts = 0
     for i in eachindex(pop)
         if pop.active[i]
-            tot += pop.w[i] * energy(pop.particle, pop.p[i])
+            tot += pop.w[i] * energy(pop.particle, pop.v[i])
             nparts += 1
         end
     end
@@ -110,7 +110,7 @@ function repack!(p::Population)
     end
 
     for i in 1:c
-        p.p[i] = p.p[k[i]]
+        p.v[i] = p.v[k[i]]
         p.x[i] = p.x[k[i]]
         p.w[i] = p.w[k[i]]
         p.s[i] = p.s[k[i]]

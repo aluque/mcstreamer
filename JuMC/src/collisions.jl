@@ -48,12 +48,12 @@ struct AttachmentOutcome{P <: Particle} <: AbstractOutcome
 end
 
 struct IonizationOutcome{P <: Particle, T} <: AbstractOutcome
-    p1::SVector{3, T}
-    p2::SVector{3, T}
+    v1::SVector{3, T}
+    v2::SVector{3, T}
 end
 
-struct MomentumChangeOutcome{P <: Particle, T} <: AbstractOutcome
-    p::SVector{3, T}
+struct VelocityChangeOutcome{P <: Particle, T} <: AbstractOutcome
+    v::SVector{3, T}
 end
 
 """
@@ -65,17 +65,17 @@ We also need to pass `maxrate` and `Δt` because for ionization collisions,
 they are needed to initialize the time-to-next collisions of the new
 particle.
 """
-function apply!(pind, outcome::MomentumChangeOutcome{Particle{sym}}, i,
+function apply!(pind, outcome::VelocityChangeOutcome{Particle{sym}}, i,
                 maxrate, Δt) where sym
     @unpack pop = pind[sym]
-    @inbounds pop.p[i] = outcome.p
+    @inbounds pop.v[i] = outcome.v
 end
 
 function apply!(pind, outcome::IonizationOutcome{Particle{sym}}, i,
                 maxrate, Δt) where sym
     @unpack pop = pind[sym]
-    @inbounds pop.p[i] = outcome.p1
-    @inbounds newi = add_particle!(pop, outcome.p2, pop.x[i], pop.w[i])
+    @inbounds pop.v[i] = outcome.v1
+    @inbounds newi = add_particle!(pop, outcome.v2, pop.x[i], pop.w[i])
 
     pop.s[newi] = Int(fld(nextcol(maxrate), Δt))
 end
@@ -93,7 +93,7 @@ end
 abstract type AbstractCollisionTracker end
 struct VoidCollisionTracker end
 
-track(::AbstractCollisionTracker, outcome::AbstractOutcome, x, p) = nothing
+track(::AbstractCollisionTracker, outcome::AbstractOutcome, x, v) = nothing
 
 
 
@@ -115,7 +115,7 @@ function collisions!(pind, particle::Particle{sym}, Δt,
         if pop.s[i] < 0
             #ncolls[Threads.threadid()] += 1
             #@info "Particle $i collision"
-            E = energy(pop.particle, pop.p[i])
+            E = energy(pop.particle, pop.v[i])
             ξ = rand(typeof(E)) * colls.maxrate
             
             do_one_collision!(pind, particle, pop, colls, tracker, i, ξ, E, Δt)
@@ -141,8 +141,8 @@ end
               quote
               @inbounds ν = w * colls.rate[$j, k] + (1 - w) * colls.rate[$j, k + 1]
               if ν > ξ
-                outcome = collide(colls.proc[$j], particle, pop.p[i], E)
-                track(tracker, outcome, pop.x[i], pop.p[i], pop.w[i])
+                outcome = collide(colls.proc[$j], particle, pop.v[i], E)
+                track(tracker, outcome, pop.x[i], pop.v[i], pop.w[i])
                 apply!(pind, outcome, i, colls.maxrate, Δt)
                 return
               else
@@ -171,7 +171,7 @@ function collrates(pind, particle::Particle{sym}) where sym
     k = zeros(length(colls))
 
     for ip in eachindex(pop)
-        E = energy(particle, pop.p[ip])
+        E = energy(particle, pop.v[ip])
         i, w = indweight(colls, E)
         k += @. (w * colls.rate[:, i] + (1 - w) * colls.rate[:, i + 1])
     end
