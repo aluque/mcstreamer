@@ -36,10 +36,10 @@ struct Grid{T}
     M::Int
     N::Int
 
-    rc::StepRangeLen{T, T, T}
-    rf::StepRangeLen{T, T, T}
-    zc::StepRangeLen{T, T, T}
-    zf::StepRangeLen{T, T, T}
+    rc::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+    rf::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+    zc::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+    zf::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
 
     function Grid(R::T, L::T, M, N) where T
         SRL = StepRangeLen{T, T, T}
@@ -223,7 +223,7 @@ struct CollisionTracker{S <: GridFields}
     fields::S
 end
 
-track(::CollisionTracker, ::AbstractOutcome, x, p, w) = nothing
+track(::CollisionTracker, ::AbstractOutcome, x, v, w) = nothing
 
 function track1(fields, x, val)
     I = cellindext(fields.grid, x)
@@ -233,9 +233,9 @@ function track1(fields, x, val)
     nothing
 end
 
-track(tracker::CollisionTracker, ::IonizationOutcome, x, p, w) =
+track(tracker::CollisionTracker, ::IonizationOutcome, x, v, w) =
     track1(tracker.fields, x, w)
-track(tracker::CollisionTracker, ::AttachmentOutcome, x, p, w) =
+track(tracker::CollisionTracker, ::AttachmentOutcome, x, v, w) =
     track1(tracker.fields, x, -w)
 
 function start()
@@ -246,7 +246,7 @@ function start()
 end
 
 function main()
-    L = 4e-2
+    L = 5e-2
     R = 5e-3
     
     n = 10000
@@ -264,7 +264,7 @@ function main()
     
     Δt = 10^floor(log10(1 / (2 * ecolls.maxrate)))
     @show Δt
-    tmax = 50e-9
+    tmax = 30e-9
     eb = -150 * co.Td * co.nair
     
     T = Float64
@@ -287,7 +287,7 @@ function main()
     pind = (electron = CollisionPopulation(ecolls, epop),)
     init!(pind, Electron(), Δt)
     
-    grid = Grid(R, L, 512, 8 * 512)
+    grid = Grid(R, L, 512, 5120)
     fields = GridFields(grid)
     density!(grid, fields.qfixed, pind, Electron(), 1.0)
     
@@ -300,17 +300,17 @@ function main()
     
     mg = MGConfig(bc=bc, s=co.elementary_charge * dz(grid)^2 / co.ϵ0,
                   conn=Multigrid.CylindricalConnector{1}(),
-                  levels=8,
-                  tolerance=1.0e4,
-                  smooth1=3,
-                  smooth2=3,
+                  levels=9,
+                  tolerance=1.0e8,
+                  smooth1=2,
+                  smooth2=2,
                   verbosity=0,
-                  g=1)    
+                  g=1)
     
     ws = Multigrid.allocate(mg, parent(fields.q));
     
     efield = FieldInterp(fields)
-    Δt_poisson, Δt_output, Δt_resample = 1e-12, 1e-9, 1e-11
+    Δt_poisson, Δt_output, Δt_resample = 1e-11, 1e-9, 1e-11
     
     nsteps(pind, Int(fld(tmax, Δt)), efield, eb, Δt,
            Δt_poisson, Δt_output, Δt_resample,
@@ -349,12 +349,19 @@ function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
     poisson = TimeStepper(Δt_poisson)
     output = TimeStepper(Δt_output)
     resample = TimeStepper(Δt, Δt_resample)
+
+    # Measure time used in different work
+    elapsed_poisson = 0.0
+    elapsed_advance = 0.0
+    elapsed_collisions = 0.0
+    elapsed_resample = 0.0
+    
     
     for i in 1:n
         t = (i - 1) * Δt
         
         atstep(poisson, t) do _
-            poisson!(fields, pind, eb, mg, ws)
+            elapsed_poisson += @elapsed poisson!(fields, pind, eb, mg, ws)
         end
         
         atstep(output, t) do j
@@ -363,15 +370,18 @@ function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
             active_superparticles = actives(epop)
             physical_particles = weight(epop)
             @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
+            @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_collisions elapsed_resample
         end
         
-        advance!(pind, Electron(), efield, Δt)
-        collisions!(pind, Electron(),  Δt, tracker)
+        elapsed_advance += @elapsed advance!(pind, Electron(), efield, Δt)
+        elapsed_collisions += @elapsed collisions!(pind, Electron(),  Δt, tracker)
 
         atstep(resample, t) do _
-            resample!(pind, fields, Electron(), γ)
-            repack!(epop)
-            shuffle!(epop)
+            elapsed_resample += @elapsed begin
+                resample!(pind, fields, Electron(), γ)
+                repack!(epop)
+                shuffle!(epop)
+            end
         end
         
         for part in keys(pind)            
@@ -474,7 +484,7 @@ function resample!(pind, fields, particle::Particle{sym}, γ) where sym
         checkbounds(Bool, c, I) || continue
         
         #f = (pop.w[i] > 2) ? 1.1 : 1
-        f = 1
+        f = 1.0
         n0 = f * c[I]
         c[I] *= γ
 
@@ -494,8 +504,8 @@ function resample!(pind, fields, particle::Particle{sym}, γ) where sym
                 # pop.x[pi] = cylavg(pop.x[i], pop.x[pi], nw, pnw)
                 # pop.p[pi] = cylavg(pop.p[i], pop.p[pi], nw, pnw)
 
-                pop.x[pi], pop.p[pi] = choose(pop.x[i], pop.x[pi],
-                                              pop.p[i], pop.p[pi], nw, pnw)
+                pop.x[pi], pop.v[pi] = choose(pop.x[i], pop.x[pi],
+                                              pop.v[i], pop.v[pi], nw, pnw)
                 pop.w[pi] = wt
                 
                 pop.active[i] = false
@@ -505,7 +515,7 @@ function resample!(pind, fields, particle::Particle{sym}, γ) where sym
         else
             if ξ > 2 - n0
                 pop.w[i] /= 2
-                newi = add_particle!(pop, pop.p[i], pop.x[i], pop.w[i])
+                newi = add_particle!(pop, pop.v[i], pop.x[i], pop.w[i])
                 pop.s[newi] = pop.s[i]                
                 c[I] *= γ
             end
@@ -555,7 +565,7 @@ function shuffle!(pop::Population)
     for i in n:-1:2
         j = rand(1:i)
         pop.x[i], pop.x[j] = pop.x[j], pop.x[i]
-        pop.p[i], pop.p[j] = pop.p[j], pop.p[i]
+        pop.v[i], pop.v[j] = pop.v[j], pop.v[i]
         pop.w[i], pop.w[j] = pop.w[j], pop.w[i]
     end        
 end
@@ -597,8 +607,10 @@ if !isinteractive()
     Streamer.main()
 else
     try
-        using Revise
-        Revise.track(@__FILE__)
+        @eval using Revise
+        atreplinit() do _
+            Revise.track(@__FILE__)
+        end
     catch e
         @warn "Failed to track file $(@__FILE__)"
     end
