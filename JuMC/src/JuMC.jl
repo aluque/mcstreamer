@@ -5,6 +5,8 @@ using Parameters
 using LinearAlgebra
 using StaticArrays
 using Interpolations
+using Polyester
+using LoopVectorization
 
 import JSON
 

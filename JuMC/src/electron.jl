@@ -5,7 +5,7 @@ mass(k::Electron) = co.electron_mass
 energy(k::Electron, v2::Real) = 0.5 * mass(k) * v2
 energy(k::Electron, v::AbstractVector) = energy(k, sum(v.^2))
 
-function advance_free(k::Electron, x, v, efield, Δt)
+@inline function advance_free(k::Electron, x, v, efield, Δt)
     # Leapfrog integration. Note that x and v are not synchronous.
     Δv = -(Δt * co.elementary_charge / mass(k)) .* efield(x) 
     v1 = v + Δv

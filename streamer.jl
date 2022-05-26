@@ -13,6 +13,7 @@ using CodecZlib
 using Formatting
 using Logging
 using Dates
+using TOML
 
 using JuMC: Population, CollisionTable, load_lxcat, init!, advance!, collisions!,
     Electron, add_particle!
@@ -137,12 +138,12 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # z-component of the electric field
     ez::A
 
-    # For Russian roulette; accumulator to reduce the surviving probability.
-    c::A
-
     # For Russian roulette; counter of particles inside each cell.
     p::AI
 
+    # For Russian roulette; total weight of the discarded particles
+    w::A
+    
     """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
         qfixed = calloc_centers_threads(T, grid)
@@ -245,11 +246,13 @@ function start()
     end
 end
 
-function main()
-    L = 5e-2
-    R = 5e-3
+function main(finput=ARGS[1]; debug=false)
+    input = TOML.parsefile(finput)
     
-    n = 10000
+    L::Float64 = input["domain"]["L"]
+    R::Float64 = input["domain"]["R"]
+    
+    n::Int = input["n"]
     
     densities = Dict("N2" => co.nair * 0.79,
                      "O2" => co.nair * 0.21)
@@ -263,12 +266,14 @@ function main()
     ecolls = CollisionTable(proc, energy, rate, maxrate)
     
     Δt = 10^floor(log10(1 / (2 * ecolls.maxrate)))
-    @show Δt
-    tmax = 30e-9
-    eb = -150 * co.Td * co.nair
+    @info "Time step derived from collision rate" Δt
+
+    tmax = input["tmax"]
+
+    eb::Float64 = -input["eb"] * co.Td * co.nair
     
     T = Float64
-    maxp = Int(1e7)
+    maxp::Int = input["maxp"]
     
     # Initialize the electron population
     epop = Population(Electron(),
@@ -279,15 +284,19 @@ function main()
                       ones(T, maxp),
                       zeros(Int, maxp))
     
-    σx = R / 16
+    w::Float64 = input["seed"]["w"]
+    z0::Float64 = input["seed"]["z0"]
     for i in eachindex(epop)
-        epop.x[i] = @SVector [σx * randn(), σx * randn(), L / 8 + σx * randn()]
+        epop.x[i] = @SVector [w * randn(), w * randn(), z0 + w * randn()]
     end
     
     pind = (electron = CollisionPopulation(ecolls, epop),)
     init!(pind, Electron(), Δt)
+
+    M::Int = input["domain"]["M"]
+    N::Int = input["domain"]["N"]
     
-    grid = Grid(R, L, 512, 5120)
+    grid = Grid(R, L, M, N)
     fields = GridFields(grid)
     density!(grid, fields.qfixed, pind, Electron(), 1.0)
     
@@ -310,15 +319,24 @@ function main()
     ws = Multigrid.allocate(mg, parent(fields.q));
     
     efield = FieldInterp(fields)
-    Δt_poisson, Δt_output, Δt_resample = 1e-11, 1e-9, 1e-11
+    Δt_poisson, Δt_output, Δt_resample = 1e-11, 1e-10, 1e-11
     
-    nsteps(pind, Int(fld(tmax, Δt)), efield, eb, Δt,
+    outpath = splitext(abspath(finput))[1]
+    isdir(outpath) || mkdir(outpath)
+
+    maxc::Int = input["maxc"]
+
+    if debug
+        return (;pind, efield, eb, Δt, fields, mg, ws)
+    end
+    
+    nsteps(pind, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
            Δt_poisson, Δt_output, Δt_resample,
-           fields, mg, ws)
+           fields, mg, ws; outpath)
     
     # k = collrates(pind, Electron())
     density!(grid, fields.qpart, pind, Electron(), -1.0)
-
+    
     (;pind, efield, Δt, fields)
 end
 
@@ -328,7 +346,8 @@ end
 
     Parameters:
     * `pind` a particle population.
-    * `n`: number of sterps.
+    * `n`: number of steps.
+    * `maxc`: Max. particles per cell.
     * `efield`: Electric field interpolator.    
     * `eb`: Background electric field.
     * `Δt`: Time-step at which the particles are updated.
@@ -338,13 +357,12 @@ end
     * `mg`: A Multigrid (MG) solver.
     * `ws`: Working space for the MG solver.
 """
-function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
-                fields, mg, ws)
+function nsteps(pind, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
+                fields, mg, ws; outpath="")
 
     ecolls = pind.electron.colls
     epop = pind.electron.pop
     tracker = CollisionTracker(fields)
-    γ = 1 - 1 / 10000
 
     poisson = TimeStepper(Δt_poisson)
     output = TimeStepper(Δt_output)
@@ -365,7 +383,7 @@ function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
         end
         
         atstep(output, t) do j
-            jldsave(fmt("04d", j) * ".jld", true; fields)
+            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), true; fields)
             
             active_superparticles = actives(epop)
             physical_particles = weight(epop)
@@ -378,7 +396,7 @@ function nsteps(pind, n, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
 
         atstep(resample, t) do _
             elapsed_resample += @elapsed begin
-                resample!(pind, fields, Electron(), γ)
+                resample!(pind, fields, Electron(), maxc)
                 repack!(epop)
                 shuffle!(epop)
             end
@@ -468,62 +486,41 @@ end
 
 """
     Resample the population of `particle` inside `pind` using 
-    Russian roulette and splitting.
+    Russian roulette and splitting to ensure that in each cell no more than
+    nmax super-particles remain.  The weight oof the removed particles are
+    distributed among all remaining particles cell-wise.
 """
-function resample!(pind, fields, particle::Particle{sym}, γ) where sym
+function resample!(pind, fields, particle::Particle{sym}, nmax) where sym
     @unpack pop, colls = pind[sym]    
-    @unpack grid, c, p = fields
+    @unpack grid, p, w = fields
 
-    c .= 1.0
+    w .= 0.0
     p .= 0
     
     for i in eachindex(pop)
         pop.active[i] || continue
 
         I = cellindex(grid, pop.x[i])
-        checkbounds(Bool, c, I) || continue
+        checkbounds(Bool, p, I) || continue
+
+        p[I] += 1
         
-        #f = (pop.w[i] > 2) ? 1.1 : 1
-        f = 1.0
-        n0 = f * c[I]
-        c[I] *= γ
-
-        ξ = rand()
-        
-        if n0 <= 1
-            if ξ > n0
-                pi = p[I]
-
-                @assert pi > 0
-                wt = pop.w[pi] + pop.w[i]
-                nw, pnw = pop.w[i] / wt, pop.w[pi] / wt
-
-                # Because we use 2.5d we cannot average the locations because
-                # they will concentrate on the axes; we average their
-                # cylindrical components.
-                # pop.x[pi] = cylavg(pop.x[i], pop.x[pi], nw, pnw)
-                # pop.p[pi] = cylavg(pop.p[i], pop.p[pi], nw, pnw)
-
-                pop.x[pi], pop.v[pi] = choose(pop.x[i], pop.x[pi],
-                                              pop.v[i], pop.v[pi], nw, pnw)
-                pop.w[pi] = wt
-                
-                pop.active[i] = false
-            else
-                p[I] = i
-            end
-        else
-            if ξ > 2 - n0
-                pop.w[i] /= 2
-                newi = add_particle!(pop, pop.v[i], pop.x[i], pop.w[i])
-                pop.s[newi] = pop.s[i]                
-                c[I] *= γ
-            end
-            
-            p[I] = i
+        if p[I] > nmax
+            pop.active[i] = false
+            w[I] += pop.w[i]
         end
     end
-    
+
+    for i in eachindex(pop)
+        pop.active[i] || continue
+
+        I = cellindex(grid, pop.x[i])
+        checkbounds(Bool, p, I) || continue
+
+        if p[I] > nmax
+            pop.w[i] += w[I] / nmax
+        end
+    end
 end
 
 
@@ -604,7 +601,7 @@ end
 
 
 if !isinteractive()
-    Streamer.main()
+    Streamer.start()
 else
     try
         @eval using Revise
