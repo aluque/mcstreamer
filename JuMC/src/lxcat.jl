@@ -56,7 +56,7 @@ function load_lxcat(fname, densities, energy)
 
 
     νrun = zeros(T, length(energy))
-    rate = zeros(T, (nprocs, length(energy)))
+    rate = zeros(T, (nprocs + 1, length(energy)))
     i = 1
 
     for (name, ps) in targets
@@ -66,15 +66,28 @@ function load_lxcat(fname, densities, energy)
         for item in ps
             push!(proc, dkinds[item["kind"]](item))
             rate[i, :] .= item["nu"]
+            @info signature(item) maximum(rate[i, :])
             # This is to compute the max. coll rate
-            νrun .+= item["nu"]          
+            νrun .+= item["nu"]
             i += 1
         end
     end
 
     # Find also the max. of the collision rate
     maxrate = maximum(νrun)
-    proc = tuple(proc...)
+
+    nullrate = maxrate .- νrun
+    rate[nprocs + 1, :] = nullrate
+    push!(proc, NullCollision())
+    
+    # Order collisions according to the integral (sum) over energies
+    inteng = dropdims(sum(rate, dims=2), dims=2)
+    perm = sortperm(inteng, rev=true)
+    
+    proc = tuple(proc[perm]...)
+    rate = rate[perm, :]
+
+    @assert size(rate, 1) == length(proc)
     
     (;proc, rate, maxrate)
 end
@@ -96,3 +109,9 @@ function ensure_elastic(procs)
 end
 
     
+function signature(proc)
+    target = proc["target"]
+    product = haskey(proc, "product") ? proc["product"] : ""
+    kind = proc["kind"]
+    "e + $target -> $product... ($kind)"
+end

@@ -1,5 +1,7 @@
 abstract type CollisionProcess end
 
+struct NullCollision <: CollisionProcess end
+
 """
     Struct with a set of collisions evaluated at the same energy grid.
 """
@@ -20,21 +22,7 @@ end
 
 Base.length(c::CollisionTable) = length(c.proc)
 
-
-"""
-Return the index and weight of the item before x in a range.
-"""
-function indweight(r::AbstractRange, x)
-    #i = searchsortedlast(r, x)
-    i = Int(fld(x - first(r), step(r))) + 1
-    #@assert ip == i "$ip != $i"
-    w = (r[i + 1] - x) / step(r)
-    @assert 0 <= w <= 1
-    return (i, w)
-end
-
-indweight(colls::CollisionTable, E) = indweight(colls.energy, E)
-
+maxrate(c::CollisionTable) = c.maxrate
 
 #
 # Collision outcomes
@@ -44,46 +32,50 @@ indweight(colls::CollisionTable, E) = indweight(colls.energy, E)
 
 abstract type AbstractOutcome end
 
-struct AttachmentOutcome{P <: Particle} <: AbstractOutcome
+# Nothing happens
+struct NullOutcome <: AbstractOutcome end
+    
+# The colliding particle dissapears
+struct RemoveParticleOutcome{PT} <: AbstractOutcome end
+
+# The state of the colliding particle changes to p
+struct StateChangeOutcome{PS} <: AbstractOutcome
+    p::PS
 end
 
-struct IonizationOutcome{P <: Particle, T} <: AbstractOutcome
-    v1::SVector{3, T}
-    v2::SVector{3, T}
+# A new particle is created with state p2. The state of
+# the colliding particle changes to p1
+struct NewParticleOutcome{PS1, PS2} <: AbstractOutcome
+    p1::PS1
+    p2::PS2
 end
 
-struct VelocityChangeOutcome{P <: Particle, T} <: AbstractOutcome
-    v::SVector{3, T}
-end
+@inline collide(c::NullCollision, k, energy) = NullOutcome()
 
 """
-   appply!(pind, outcome, i, maxrate, Δt)
+   appply!(population, outcome, i)
 
-Apply a `CollisionOutcome` to a population index `pind`.  `i` is the index
+Apply a `CollisionOutcome` to a population `population`.  `i` is the index
 of the colliding particle, which is needed if it experiences a change.
-We also need to pass `maxrate` and `Δt` because for ionization collisions,
-they are needed to initialize the time-to-next collisions of the new
-particle.
+We delegate to `population` handling the creation of a new particle.
 """
-function apply!(pind, outcome::VelocityChangeOutcome{Particle{sym}}, i,
-                maxrate, Δt) where sym
-    @unpack pop = pind[sym]
-    @inbounds pop.v[i] = outcome.v
+@inline function apply!(population, outcome::NullOutcome, i)
+    # DO-nothing collision
 end
 
-function apply!(pind, outcome::IonizationOutcome{Particle{sym}}, i,
-                maxrate, Δt) where sym
-    @unpack pop = pind[sym]
-    @inbounds pop.v[i] = outcome.v1
-    @inbounds newi = add_particle!(pop, outcome.v2, pop.x[i], pop.w[i])
-
-    pop.s[newi] = Int(fld(nextcol(maxrate), Δt))
+@inline function apply!(population, outcome::StateChangeOutcome{PS}, i) where PS
+    set_particle_state!(population, particle_type(PS), i, outcome.p)
 end
 
-function apply!(pind, outcome::AttachmentOutcome{Particle{sym}}, i,
-                maxrate, Δt) where sym
-    @unpack pop = pind[sym]
-    @inbounds pop.active[i] = false
+@inline function apply!(population, outcome::NewParticleOutcome{PS1, PS2}, i) where {PS1, PS2}
+    w = get_super_particle_state(population, particle_type(PS1), i).w
+    
+    set_particle_state!(population, particle_type(PS1), i, outcome.p1)
+    add_particle!(population, particle_type(PS2), outcome.p2, w)
+end
+
+@inline function apply!(population, outcome::RemoveParticleOutcome{PT}, i) where PT
+    remove_particle!(population, PT, i)
 end
 
 #
@@ -93,33 +85,37 @@ end
 abstract type AbstractCollisionTracker end
 struct VoidCollisionTracker end
 
-track(::AbstractCollisionTracker, outcome::AbstractOutcome, x, v) = nothing
-
+track(::AbstractCollisionTracker, outcome::AbstractOutcome, p::SuperParticleState) = nothing
 
 
 """
 Check for the particles that are set to collide and then perform a
 (possibly null) collision
 """
-function collisions!(pind, particle::Particle{sym}, Δt,
-                     tracker=VoidCollisionTracker()) where sym
-    @unpack pop, colls = pind[sym]
-
-    #ncolls = zeros(Int, Threads.nthreads())
+function collisions!(population, particle_type, Δt, tracker=VoidCollisionTracker())
+    n = get_particle_count(population, particle_type)
     
-    @threads for i in eachindex(pop)
-        @inbounds pop.active[i] || continue
-
-        pop.s[i] -= 1
-
-        if pop.s[i] < 0
-            #ncolls[Threads.threadid()] += 1
-            #@info "Particle $i collision"
-            E = energy(pop.particle, pop.v[i])
-            ξ = rand(typeof(E)) * colls.maxrate
+    @batch for i in 1:n        
+        super_state = get_super_particle_state(population, particle_type, i)
+        s = super_state.s
+        s -= Δt
+        if s > 0
+            set_particle_super_state(population, particle_type, i,
+                                     @set super_state.s = s)            
+        else
+            state = super_state.state
             
-            do_one_collision!(pind, particle, pop, colls, tracker, i, ξ, E, Δt)
-            pop.s[i] = Int(fld(nextcol(colls.maxrate), Δt))
+            νmax = maxrate(population, particle_type)
+            
+            E = energy(state)
+            ξ = rand(typeof(E)) * νmax
+            
+            do_one_collision!(population, particle_type, super_state, ξ, i,
+                              E, tracker)
+
+            s = nextcol(νmax)
+            set_super_particle_state(population, particle_type, i,
+                                     @set super_state.s = s)            
         end
     end
     
@@ -127,23 +123,30 @@ function collisions!(pind, particle::Particle{sym}, Δt,
     
 end
 
+indweight(colls::CollisionTable, E) = indweight(colls.energy, E)
 
-@generated function do_one_collision!(pind, particle, pop, colls::CollisionTable{T, C},
-                                     tracker, i, ξ, E, Δt) where {T, C}
+"""
+    Sample one (possibly null) collision.
+"""    
+@generated function do_one_collision!(population, particle_type, super_state, ξ, i, energy,
+                                      tracker)
+    colls = get_collisions(population, particle_type)
+
     L = fieldcount(C)
 
     out = quote
-        k, w = indweight(colls, E)
+        $(Expr(:meta, :inline))
+        k, w = indweight(colls, energy)
     end
     
     for j in 1:L
         push!(out.args,
               quote
               @inbounds ν = w * colls.rate[$j, k] + (1 - w) * colls.rate[$j, k + 1]
-              if ν > ξ
-                outcome = collide(colls.proc[$j], particle, pop.v[i], E)
-                track(tracker, outcome, pop.x[i], pop.v[i], pop.w[i])
-                apply!(pind, outcome, i, colls.maxrate, Δt)
+              if ν > ξ                  
+                  outcome = collide(colls.proc[$j], state, energy)
+                  track(tracker, outcome, super_state)
+                  apply!(population, outcome, i)
                 return
               else
                 ξ -= ν
@@ -157,25 +160,4 @@ end
           end)
           
     return out
-end
-
-
-"""
-    collrates(pind, particle)
-
-Return the collision rates for all processes for a given particle.
-""" 
-function collrates(pind, particle::Particle{sym}) where sym
-    @unpack pop, colls = pind[sym]
-
-    k = zeros(length(colls))
-
-    for ip in eachindex(pop)
-        E = energy(particle, pop.v[ip])
-        i, w = indweight(colls, E)
-        k += @. (w * colls.rate[:, i] + (1 - w) * colls.rate[:, i + 1])
-    end
-
-    k ./= pop.n[]
-    return k
 end

@@ -33,6 +33,188 @@ function logfmt(level, _module, group, id, file, line)
 end
 
 
+function start()
+    logger = ConsoleLogger(meta_formatter=logfmt)
+    with_logger(logger) do
+        main()
+    end
+end
+
+function main(finput=ARGS[1]; debug=false)
+    @info "Starting simulation"
+    poisson_save_n[] = 0
+    
+    input = TOML.parsefile(finput)
+    
+    L::Float64 = input["domain"]["L"]
+    R::Float64 = input["domain"]["R"]
+    
+    n::Int = input["n"]
+    
+    densities = Dict("N2" => co.nair * 0.79,
+                     "O2" => co.nair * 0.21)
+    
+    # Create the energy grid in eV; all cross-sections are interpolated into
+    # this grid
+    #energy = (0:0.01:1000) .* co.eV
+    energy = LinRange(0, 1000 * co.eV, 100_000)
+    
+    csfile = joinpath(@__DIR__, "LXCat-June2013.json")
+    proc, rate, maxrate = load_lxcat(csfile, densities, energy)
+    ecolls = CollisionTable(proc, energy, rate, maxrate)
+    
+    Δt = 10^floor(log10(1 / (2 * ecolls.maxrate)))
+    @info "Time step derived from collision rate" Δt
+
+    tmax = input["tmax"]
+
+    eb::Float64 = -input["eb"] * co.Td * co.nair
+    
+    T = Float64
+    maxp::Int = input["maxp"]
+    
+    # Initialize the electron population
+    epop = Population(Electron(),
+                      n,
+                      zeros(Bool, maxp),
+                      zeros(SVector{3, T}, maxp),
+                      zeros(SVector{3, T}, maxp),
+                      ones(T, maxp),
+                      zeros(Int, maxp))
+    
+    w::Float64 = input["seed"]["w"]
+    z0::Float64 = input["seed"]["z0"]
+    for i in eachindex(epop)
+        epop.x[i] = @SVector [w * randn(), w * randn(), z0 + w * randn()]
+    end
+    
+    pind = (electron = CollisionPopulation(ecolls, epop),)
+    init!(pind, Electron(), Δt)
+
+    M::Int = input["domain"]["M"]
+    N::Int = input["domain"]["N"]
+    
+    grid = Grid(R, L, M, N)
+    fields = GridFields(grid)
+    density!(grid, fields.qfixed, pind, Electron(), 1.0)
+    
+    
+    # Poisson
+    bc = ((LeftBnd(), Dirichlet()),
+          (RightBnd(), Dirichlet()),
+          (TopBnd(), Neumann()),
+          (BottomBnd(), Neumann()))
+    
+    mg = MGConfig(bc=bc, s=co.elementary_charge * dz(grid)^2 / co.ϵ0,
+                  conn=Multigrid.CylindricalConnector{1}(),
+                  levels=9,
+                  tolerance=1.0e8,
+                  smooth1=2,
+                  smooth2=2,
+                  verbosity=0,
+                  g=1)
+    
+    ws = Multigrid.allocate(mg, parent(fields.q));
+    
+    efield = FieldInterp(fields)
+    Δt_poisson, Δt_output, Δt_resample = map(v -> input["interval"][v],
+                                             ("poisson", "output", "resample"))
+    
+    outpath = splitext(abspath(finput))[1]
+    isdir(outpath) || mkdir(outpath)
+
+    maxc::Int = input["maxc"]
+
+    denoiser = Denoiser(input["denoise"]["model"], (0.0, 1.0),
+                        Tuple(input["denoise"]["log10range"]))
+    
+    if debug
+        return (;pind, efield, eb, Δt, fields, mg, ws)
+    end
+
+    nsteps(pind, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
+           Δt_poisson, Δt_output, Δt_resample,
+           fields, mg, ws, denoiser; outpath)
+    
+    # k = collrates(pind, Electron())
+    density!(grid, fields.qpart, pind, Electron(), -1.0)
+
+    (;grid, pind, efield, Δt, fields)
+end
+
+
+"""
+    Advance the simulation by `n` steps.
+
+    Parameters:
+    * `pind` a particle population.
+    * `n`: number of steps.
+    * `maxc`: Max. particles per cell.
+    * `efield`: Electric field interpolator.    
+    * `eb`: Background electric field.
+    * `Δt`: Time-step at which the particles are updated.
+    * `Δt_poisson`, `Δt_output`, `Δt_resample`: Time steps for updatting
+      the electrostatic field, outputting data and resampling particles.
+    * `fields`: A GridFields with space for all fields.
+    * `mg`: A Multigrid (MG) solver.
+    * `ws`: Working space for the MG solver.
+    * `denoiser`: a Denoiser
+"""
+function nsteps(pind, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
+                fields, mg, ws, denoiser; outpath="")
+
+    ecolls = pind.electron.colls
+    epop = pind.electron.pop
+    tracker = CollisionTracker(fields)
+
+    poisson = TimeStepper(Δt_poisson)
+    output = TimeStepper(Δt_output)
+    resample = TimeStepper(Δt, Δt_resample)
+
+    # Measure time used in different work
+    elapsed_poisson = 0.0
+    elapsed_advance = 0.0
+    elapsed_collisions = 0.0
+    elapsed_resample = 0.0
+    
+    
+    for i in 1:n
+        t = (i - 1) * Δt
+        
+        atstep(poisson, t) do _
+            elapsed_poisson += @elapsed poisson!(fields, pind, eb, mg, ws,
+                                                 denoiser, outpath)
+        end
+        
+        atstep(output, t) do j
+            # Use true here to enable compression.
+            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false; fields)
+            
+            active_superparticles = actives(epop)
+            physical_particles = weight(epop)
+            @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
+            @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_collisions elapsed_resample
+        end
+        
+        
+        elapsed_advance += @elapsed advance!(pind, Electron(), efield, Δt)
+        elapsed_collisions += @elapsed collisions!(pind, Electron(),  Δt, tracker)
+
+        atstep(resample, t) do _
+            elapsed_resample += @elapsed begin
+                resample!(pind, fields, Electron(), maxc)
+                repack!(epop)
+                shuffle!(epop)
+            end
+        end
+        
+        for part in keys(pind)            
+            @unpack pop = pind[part]
+            # Repack always to allow LoopVectorization in advance!
+            repack!(pop)
+        end
+    end
+end
 
 struct Grid{T}
     R::T
@@ -41,16 +223,15 @@ struct Grid{T}
     M::Int
     N::Int
 
-    rc::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    rf::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    zc::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    zf::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+    rc::LinRange{T, Int}
+    rf::LinRange{T, Int}
+    zc::LinRange{T, Int}
+    zf::LinRange{T, Int}
 
     function Grid(R::T, L::T, M, N) where T
-        SRL = StepRangeLen{T, T, T}
-        rf = range(0, stop=R, length=M + 1)
-        zf = range(0, stop=L, length=N + 1)
-
+        rf = LinRange(0, R, M + 1)
+        zf = LinRange(0, L, N + 1)
+        
         rc = 0.5 * (rf[(begin + 1):end] + rf[begin:(end - 1)])
         zc = 0.5 * (zf[(begin + 1):end] + zf[begin:(end - 1)])
 
@@ -179,7 +360,6 @@ function (fieldinterp::FieldInterp)(x)
     inside(fieldinterp.fields.grid, x) || return zero(SVector{3, eltype(x)})
     r = sqrt(x[1]^2 + x[2]^2)
     
-
     grid = fieldinterp.fields.grid
     fields = fieldinterp.fields
     @unpack er, ez = fields
@@ -196,7 +376,7 @@ function (fieldinterp::FieldInterp)(x)
     
     j1fl, δz1 = divrem(x[3] - first(grid.zf) + 0.5 * dz(grid), dz(grid))
     j1 = Int(j1fl)
-
+    
     # Normalize to 0..1
     δr /= dr(grid)
     δz /= dz(grid)
@@ -206,16 +386,16 @@ function (fieldinterp::FieldInterp)(x)
     # er
     er1 = (er[i, j1]     * (1 - δr) * (1 - δz1) + er[i + 1, j1]     * δr * (1 - δz1) +
            er[i, j1 + 1] * (1 - δr) * δz1       + er[i + 1, j1 + 1] * δr * δz1)
-
+    
     ez1 = (ez[i1, j]     * (1 - δr1) * (1 - δz) + ez[i1 + 1, j]     * δr1 * (1 - δz) +
            ez[i1, j + 1] * (1 - δr1) * δz       + ez[i1 + 1, j + 1] * δr1 * δz)
-
-        # Return early and avoid 0/0
+    
+    # Return early and avoid 0/0
     r == 0 && return @SVector [zero(r), zero(r), ez1]
     
-
+    
     efield = @SVector [er1 * x[1] / r, er1 * x[2] / r, ez1]
-    efield
+    return efield
 end
 
 
@@ -243,183 +423,6 @@ track(tracker::CollisionTracker, ::IonizationOutcome, x, v, w) =
 track(tracker::CollisionTracker, ::AttachmentOutcome, x, v, w) =
     track1(tracker.fields, x, -w)
 
-function start()
-    logger = ConsoleLogger(meta_formatter=logfmt)
-    with_logger(logger) do
-        main()
-    end
-end
-
-function main(finput=ARGS[1])
-    @info "Starting simulation"
-    poisson_save_n[] = 0
-    
-    input = TOML.parsefile(finput)
-    
-    L::Float64 = input["domain"]["L"]
-    R::Float64 = input["domain"]["R"]
-    
-    n::Int = input["n"]
-    
-    densities = Dict("N2" => co.nair * 0.79,
-                     "O2" => co.nair * 0.21)
-    
-    # Create the energy grid in eV; all cross-sections are interpolated into
-    # this grid
-    energy = (0:0.01:1000) .* co.eV
-    
-    csfile = joinpath(@__DIR__, "LXCat-June2013.json")
-    proc, rate, maxrate = load_lxcat(csfile, densities, energy)
-    ecolls = CollisionTable(proc, energy, rate, maxrate)
-    
-    Δt = 10^floor(log10(1 / (2 * ecolls.maxrate)))
-    @info "Time step derived from collision rate" Δt
-
-    tmax = input["tmax"]
-
-    eb::Float64 = -input["eb"] * co.Td * co.nair
-    
-    T = Float64
-    maxp::Int = input["maxp"]
-    
-    # Initialize the electron population
-    epop = Population(Electron(),
-                      n,
-                      zeros(Bool, maxp),
-                      zeros(SVector{3, T}, maxp),
-                      zeros(SVector{3, T}, maxp),
-                      ones(T, maxp),
-                      zeros(Int, maxp))
-    
-    w::Float64 = input["seed"]["w"]
-    z0::Float64 = input["seed"]["z0"]
-    for i in eachindex(epop)
-        epop.x[i] = @SVector [w * randn(), w * randn(), z0 + w * randn()]
-    end
-    
-    pind = (electron = CollisionPopulation(ecolls, epop),)
-    init!(pind, Electron(), Δt)
-
-    M::Int = input["domain"]["M"]
-    N::Int = input["domain"]["N"]
-    
-    grid = Grid(R, L, M, N)
-    fields = GridFields(grid)
-    density!(grid, fields.qfixed, pind, Electron(), 1.0)
-    
-    
-    # Poisson
-    bc = ((LeftBnd(), Dirichlet()),
-          (RightBnd(), Dirichlet()),
-          (TopBnd(), Neumann()),
-          (BottomBnd(), Neumann()))
-    
-    mg = MGConfig(bc=bc, s=co.elementary_charge * dz(grid)^2 / co.ϵ0,
-                  conn=Multigrid.CylindricalConnector{1}(),
-                  levels=9,
-                  tolerance=1.0e8,
-                  smooth1=2,
-                  smooth2=2,
-                  verbosity=0,
-                  g=1)
-    
-    ws = Multigrid.allocate(mg, parent(fields.q));
-    
-    efield = FieldInterp(fields)
-    Δt_poisson, Δt_output, Δt_resample = map(v -> input["interval"][v],
-                                             ("poisson", "output", "resample"))
-    
-    outpath = splitext(abspath(finput))[1]
-    isdir(outpath) || mkdir(outpath)
-
-    maxc::Int = input["maxc"]
-
-    denoiser = Denoiser(input["denoise"]["model"], (0.0, 1.0),
-                        Tuple(input["denoise"]["log10range"]))
-    
-    nsteps(pind, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
-           Δt_poisson, Δt_output, Δt_resample,
-           fields, mg, ws, denoiser; outpath)
-    
-    # k = collrates(pind, Electron())
-    density!(grid, fields.qpart, pind, Electron(), -1.0)
-
-    (;grid, pind, efield, Δt, fields)
-end
-
-
-"""
-    Advance the simulation by `n` steps.
-
-    Parameters:
-    * `pind` a particle population.
-    * `n`: number of steps.
-    * `maxc`: Max. particles per cell.
-    * `efield`: Electric field interpolator.    
-    * `eb`: Background electric field.
-    * `Δt`: Time-step at which the particles are updated.
-    * `Δt_poisson`, `Δt_output`, `Δt_resample`: Time steps for updatting
-      the electrostatic field, outputting data and resampling particles.
-    * `fields`: A GridFields with space for all fields.
-    * `mg`: A Multigrid (MG) solver.
-    * `ws`: Working space for the MG solver.
-    * `denoiser`: a Denoiser
-"""
-function nsteps(pind, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
-                fields, mg, ws, denoiser; outpath="")
-
-    ecolls = pind.electron.colls
-    epop = pind.electron.pop
-    tracker = CollisionTracker(fields)
-
-    poisson = TimeStepper(Δt_poisson)
-    output = TimeStepper(Δt_output)
-    resample = TimeStepper(Δt, Δt_resample)
-
-    # Measure time used in different work
-    elapsed_poisson = 0.0
-    elapsed_advance = 0.0
-    elapsed_collisions = 0.0
-    elapsed_resample = 0.0
-    
-    
-    for i in 1:n
-        t = (i - 1) * Δt
-        
-        atstep(poisson, t) do _
-            elapsed_poisson += @elapsed poisson!(fields, pind, eb, mg, ws,
-                                                 denoiser, outpath)
-        end
-        
-        atstep(output, t) do j
-            # Use true here to enable compression.
-            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false; fields)
-            
-            active_superparticles = actives(epop)
-            physical_particles = weight(epop)
-            @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
-            @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_collisions elapsed_resample
-        end
-        
-        elapsed_advance += @elapsed advance!(pind, Electron(), efield, Δt)
-        elapsed_collisions += @elapsed collisions!(pind, Electron(),  Δt, tracker)
-
-        atstep(resample, t) do _
-            elapsed_resample += @elapsed begin
-                resample!(pind, fields, Electron(), maxc)
-                repack!(epop)
-                shuffle!(epop)
-            end
-        end
-        
-        for part in keys(pind)            
-            @unpack pop = pind[part]
-            if (length(pop) / length(pop.active)) > 0.6
-                repack!(pop)
-            end
-        end
-    end
-end
 
 
 const poisson_save_n = Ref(0)
@@ -464,11 +467,13 @@ function poisson!(fields, pind, eb, mg, ws, denoiser, outpath)
     # De-noising
     qfixed1 = denoise(denoiser, qfixed)
     qpart1 = denoise(denoiser, qpart)
+
+    if (poisson_save_n[] % 10) == 0
+        ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
     
-    ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
-    
-    jldsave(ofile, true; grid, qfixed, qfixed1, qpart, qpart1)
-    @info "Saved file" ofile
+        jldsave(ofile, true; grid, qfixed, qfixed1, qpart, qpart1)
+        @info "Saved file" ofile
+    end
     
     poisson_save_n[] += 1
 
@@ -641,7 +646,7 @@ end
 end
 
 
-if !isinteractive()
+if !@isdefined(nprocs) && !isinteractive()
     Streamer.start()
 else
     try

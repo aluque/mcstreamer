@@ -19,9 +19,8 @@ end
 
 function advance!(pind, particle::Particle{sym}, efield, Δt) where sym
     @unpack pop = pind[sym]
-    
-    @batch for i in 1:pop.n[]
-        @inbounds pop.active[i] || continue
+    n = pop.n[]
+    @batch for i in 1:n
         pop.x[i], pop.v[i] = advance_free(pop.particle, pop.x[i],
                                           pop.v[i], efield, Δt)
     end

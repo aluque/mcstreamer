@@ -7,18 +7,27 @@ using StaticArrays
 using Interpolations
 using Polyester
 using LoopVectorization
+using Accessors
+using DocStringExtensions
 
 import JSON
 
 include("constants.jl")
 const co = Constants
 
+@template DEFAULT =
+    """
+    $(SIGNATURES)
+    $(DOCSTRING)
+    """
+
 include("util.jl")
 include("particledefs.jl")
 include("population.jl")
 include("collisions.jl")
-include("collpop.jl")
-include("electron.jl")
+#include("collpop.jl")
+#include("electron.jl")
+#include("electron_population.jl")
 include("lxcat.jl")
 
 end

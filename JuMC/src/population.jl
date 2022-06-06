@@ -1,123 +1,104 @@
 # Managing of a populations of homogeneous particles.
 
 # Population of a given particle type
-mutable struct Population{P, T}
-    particle::P
-
+mutable struct Population{T, PS, C}
+    "Number of particles"
     n::Atomic{Int}
     
-    active::Vector{Bool}
-    v::Vector{SVector{3, T}}
-    x::Vector{SVector{3, T}}    
-    w::Vector{T}
+    "Vector with the particles"
+    particles::Vector{SuperParticleState{T, PS}}
+
+    "Collision table"
+    collisions::C
+end
+
+particle_type(popl::Population{T, PS, C}) where {T, PS, C} = particle_type(PS)
+nparticles(popl::Population) = popl.n[]
+maxrate(popl::Population) = maxrate(popl.collisions)
+
+"""
+Add a particle to the population `popl` with super-state super_state.
+"""
+function add_particle!(popl::Population, super_state)
+    (;n, particles, collisions) = popl
+    @assert n[] < length(particles) "Maximum number of particles reached"
+    nprev = atomic_add!(n, 1)
     
-    # Time left for next collision
-    s::Vector{Int}
-end
+    s = nextcol(maxrate(collisions))
+    particles[nprev + 1] = super_state
 
-function Population(particle, n::Int, active, v, x, w, s)
-    Population(particle, Atomic{Int}(n), active, v, x, w, s)
-end
-
-function Population(particle, n::Int, active, v, x, s)
-    w = fill(1.0, size(x))
-    Population(particle, n, active, v, x, w, s)
-end
-
-
-Base.eachindex(p::Population) = 1:p.n[]
-Base.length(p::Population) = p.n[]
-setlength!(p::Population, n) = p.n[] = n
-
-# Warning: non-thread-safe
-"""
-    add_particle!(pop, p, x)
-
-Add a particle to the population `pop` with momentum `p` and position `x`.
-"""
-function add_particle!(pop::Population, v, x, w)
-    @assert pop.n[] < length(pop.active) "Maximum number of particles reached"
-    nprev = atomic_add!(pop.n, 1)
-    pop.v[nprev + 1] = v
-    pop.x[nprev + 1] = x
-    pop.w[nprev + 1] = w
-
-    pop.active[nprev + 1] = true
-
-    nprev + 1
+    return nprev + 1
 end
 
 
 """
-    meanenergy(pop)
-
-Compute the total weight of a population `pop`.
+Compute the total weight of a population `popl`.
 """
-function weight(pop::Population{P, T}) where {P, T}
+function weight(popl::Population{T}) where T
+    (;n, particles) = popl
     tot = zero(T)
-    for i in eachindex(pop)
-        if pop.active[i]
-            tot += pop.w[i]
+    for i in 1:n[]
+        if particles[i].active
+            tot += particles[i].w
         end
     end
     tot
 end
 
-"""
-    actives(pop)
 
+"""
 Compute the number of active particles in a population `pop`.
 """
-actives(pop) = count(i->pop.active[i], eachindex(pop))
+actives(popl) = count(i->popl.particles[i].active, 1:popl.n[])
 
 
 """
     meanenergy(pop)
 
-Compute the mean energy of a population `pop`.
+Compute the mean energy of a population `popl`.
 """
-function meanenergy(pop::Population{P, T}) where {P, T}
+function meanenergy(popl::Population{T}) where T
+    (;n, particles) = popl
+
     tot = zero(T)
+    totw = zero(T)
+    
     nparts = 0
-    for i in eachindex(pop)
-        if pop.active[i]
-            tot += pop.w[i] * energy(pop.particle, pop.v[i])
-            nparts += 1
+    for i in 1:n[]
+        p = particles[i]
+        if p.active
+            totw += p.w
+            tot += p.w * energy(p.state)
         end
     end
-    tot / nparts
+    tot / totw
 end
 
 
 """
-    repack!(p)
-
-Reorders the particles in the population `p` to have all active particle 
+Reorders the particles in the population `popl` to have all active particle 
 at the initial positions in the list.
 
 """
-function repack!(p::Population)
+function repack!(popl::Population)
+    (;n, particles) = popl
+
     start = time()
     
     # new positions
     k = zeros(Int64, length(p))
     c = 0
-    for i in eachindex(p)
-        if p.active[i]
+    for i in 1:n[]
+        if particles[i].active
             c += 1
             k[c] = i
         end
     end
 
     for i in 1:c
-        p.v[i] = p.v[k[i]]
-        p.x[i] = p.x[k[i]]
-        p.w[i] = p.w[k[i]]
-        p.s[i] = p.s[k[i]]
-
-        p.active[i] = true
+        particles[i] = particles[k[i]]
     end
 
     #@info "\u1b[0KParticles repackaged (took $(1000 * (time() - start)) ms)"
-    setlength!(p, c)
+    n[] = c
 end
