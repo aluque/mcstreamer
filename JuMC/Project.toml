@@ -13,6 +13,7 @@ LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
 Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 
 [compat]
 julia = "1"
