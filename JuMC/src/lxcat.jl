@@ -6,12 +6,15 @@ Reads a collision database from a .json file and builds a collision
 table with cumulative cross sections scaled by the densities contained
 in the densities dict and evaluated at the grid eng. 
 """
-function load_lxcat(fname, densities, energy)
+function load_lxcat(fnames, densities, energy)
     T = eltype(energy)
-
-    local db    
-    open(fname, "r") do fd
-        db = JSON.parse(read(fd, String))
+    
+    db = mapreduce(vcat, fnames) do fname
+        local db1    
+        open(fname, "r") do fd
+            db1 = JSON.parse(read(fd, String))
+        end
+        return db1
     end
     
     # We first build a dictionary with the targets to later correct for the
@@ -32,6 +35,10 @@ function load_lxcat(fname, densities, energy)
         if occursin("3-body", item["comment"])
             cs0 .*= densities[item["target"]] ./ co.centi^-3
         end
+
+        if haskey(item, "rescale")
+            cs0 .*= item["rescale"]
+        end
         
         # For performance first we interpolate to an uniform grid
         itp = extrapolate(interpolate((energy0,), cs0, Gridded(Linear())),
@@ -46,13 +53,27 @@ function load_lxcat(fname, densities, energy)
     proc = Vector{CollisionProcess}()
     
     dkinds = Dict("ATTACHMENT" =>
-                  (itm) -> Attachment(itm["threshold"] * co.eV),
+                  (itm, dens) -> Attachment(itm["threshold"] * co.eV),
+
                   "EXCITATION" =>
-                  (itm) -> Excitation(itm["threshold"] * co.eV),
+                  (itm, dens) -> Excitation(itm["threshold"] * co.eV),
+
                   "IONIZATION" =>
-                  (itm) -> Ionization(itm["threshold"] * co.eV),
+                  (itm, dens) -> Ionization(itm["threshold"] * co.eV),
+
                   "ELASTIC" =>
-                  (itm) -> Elastic(itm["mass_ratio"]))
+                  (itm, dens) -> Elastic(itm["mass_ratio"]),
+
+                  "PHOTOEMISSION" => (itm, dens) -> begin
+                  # The absorption is rescaled according to the density in the
+                  # "absorber" field and transformed from 1/m to 1/s.
+                  νmin = co.c * dens[itm["absorber"]] * itm["chi_min"]
+                  νmax = co.c * dens[itm["absorber"]] * itm["chi_max"]
+                  
+                  PhotoEmission(νmin, νmax)
+                  end
+
+                  )
 
 
     νrun = zeros(T, length(energy))
@@ -64,19 +85,19 @@ function load_lxcat(fname, densities, energy)
         ensure_elastic(ps)
         
         for item in ps
-            push!(proc, dkinds[item["kind"]](item))
+            push!(proc, dkinds[item["kind"]](item, densities))
             rate[i, :] .= item["nu"]
-            @info signature(item) maximum(rate[i, :])
-            # This is to compute the max. coll rate
-            νrun .+= item["nu"]
+            @info "New process: " * signature(item)
             i += 1
         end
     end
 
+    νtotal = dropdims(sum(rate, dims=1), dims=1)
+    
     # Find also the max. of the collision rate
-    maxrate = maximum(νrun)
+    maxrate = maximum(νtotal)
 
-    nullrate = maxrate .- νrun
+    nullrate = maxrate .- νtotal
     rate[nprocs + 1, :] = nullrate
     push!(proc, NullCollision())
     
@@ -90,6 +111,12 @@ function load_lxcat(fname, densities, energy)
     @assert size(rate, 1) == length(proc)
     
     (;proc, rate, maxrate)
+end
+
+"""
+    Prepare a photo-emission process.
+"""
+function prepare_photo_emission(itm, dens)
 end
 
 

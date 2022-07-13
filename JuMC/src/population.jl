@@ -1,77 +1,138 @@
 # Managing of a populations of homogeneous particles.
 
 # Population of a given particle type
-mutable struct Population{T, PS, C}
+struct Population{PS <: ParticleState, C, K, I}
     "Number of particles"
     n::Atomic{Int}
     
     "Vector with the particles"
-    particles::Vector{SuperParticleState{T, PS}}
+    particles::StructArray{PS, 1, K, I}
 
     "Collision table"
     collisions::C
 end
 
-particle_type(popl::Population{T, PS, C}) where {T, PS, C} = particle_type(PS)
-nparticles(popl::Population) = popl.n[]
-maxrate(popl::Population) = maxrate(popl.collisions)
+
+# Ensure that something is not a LazyRow
+instantiate(ps::ParticleState) = ps
+instantiate(ps::LazyRow{P}) where P <: ParticleState = getfield(ps, 1)[getfield(ps, 2)]
+
 
 """
-Add a particle to the population `popl` with super-state super_state.
+    Initialize a population with space to contain `max_particles`,
+    starting with a vector of super-particle states.
+    The collision table must be also given in `collisions`.
+
 """
-function add_particle!(popl::Population, super_state)
+function Population(max_particles::Int, inparticles::Vector{PS},
+                    collisions) where PS <: ParticleState
+    init_particles = length(inparticles)
+    particles = StructVector{PS}(undef, max_particles)
+
+    for i in 1:init_particles
+        particles[i] = inparticles[i]
+    end
+
+    return Population(Atomic{Int}(init_particles), particles, collisions)
+end
+
+
+particle_type(popl::Population{PS}) where {PS} = particle_type(PS)
+nparticles(popl::Population) = popl.n[]
+eachparticle(popl::Population) = LazyRows(view(popl.particles, 1:popl.n[]))
+
+
+"""
+    Add a particle to the population `popl` with super-state super_state.
+"""
+function add_particle!(popl::Population, state::ParticleState)
     (;n, particles, collisions) = popl
     @assert n[] < length(particles) "Maximum number of particles reached"
+
     nprev = atomic_add!(n, 1)
     
-    s = nextcol(maxrate(collisions))
-    particles[nprev + 1] = super_state
+    particles[nprev + 1] = state
 
     return nprev + 1
 end
 
 
+""" 
+    Remove particle `i` from the population `popl` by setting its `active` flag
+    to false
 """
-Compute the total weight of a population `popl`.
+function remove_particle!(popl::Population, i::Integer)
+    LazyRow(popl.particles, i).active = false
+end
+
+
+_particle_state_type_param(::Type{<:ParticleState{T}}) where T = T
+
 """
-function weight(popl::Population{T}) where T
-    (;n, particles) = popl
-    tot = zero(T)
-    for i in 1:n[]
-        if particles[i].active
-            tot += particles[i].w
-        end
-    end
-    tot
+    Compute the total weight of a population `popl`.
+"""
+function weight(popl::Population{PS}) where PS
+    T = _particle_state_type_param(PS)
+    mapreduce(p -> p.active ? p.w : zero(T), +, eachparticle(popl))
 end
 
 
 """
-Compute the number of active particles in a population `pop`.
+    Compute the number of active particles in a population `pop`.
 """
-actives(popl) = count(i->popl.particles[i].active, 1:popl.n[])
+actives(popl) = count(p -> p.active, eachparticle(popl))
 
 
 """
-    meanenergy(pop)
-
-Compute the mean energy of a population `popl`.
+    Compute the mean energy of a population `popl`.
 """
-function meanenergy(popl::Population{T}) where T
-    (;n, particles) = popl
+function meanenergy(popl::Population{PS}) where PS
+    T = _particle_state_type_param(PS)
 
     tot = zero(T)
     totw = zero(T)
     
     nparts = 0
-    for i in 1:n[]
-        p = particles[i]
+    for p in eachparticle(popl)
         if p.active
             totw += p.w
-            tot += p.w * energy(p.state)
+            tot += p.w * energy(instantiate(p))
         end
     end
     tot / totw
+end
+
+
+"""
+   Compute the highest energy of a population `popl`.
+"""
+function maxenergy(popl::Population{PS}) where PS
+    maximum(p -> energy(instantiate(p)), eachparticle(popl))
+end
+
+
+"""
+    Compute the centroid and deviation of a population `popl`.
+"""
+function spread(popl::Population{PS}) where PS
+    T = _particle_state_type_param(PS)
+
+    xmean = @SVector zeros(T, 3)
+    x2mean = zero(T)
+    tot = zero(T)
+    
+    nparts = 0
+    for p in eachparticle(popl)
+        if p.active
+            xmean += p.w * p.x
+            x2mean += p.w * dot(p.x, p.x)
+            tot += p.w
+        end
+    end
+    xmean /= tot
+    x2mean /= tot
+    
+    return (xmean, sqrt(x2mean - dot(xmean, xmean)))
 end
 
 
@@ -81,24 +142,33 @@ at the initial positions in the list.
 
 """
 function repack!(popl::Population)
-    (;n, particles) = popl
-
-    start = time()
-    
     # new positions
-    k = zeros(Int64, length(p))
+    k = zeros(Int, nparticles(popl))
     c = 0
-    for i in 1:n[]
-        if particles[i].active
+    for (i, p) in enumerate(eachparticle(popl))
+        if p.active
             c += 1
             k[c] = i
         end
     end
 
     for i in 1:c
-        particles[i] = particles[k[i]]
+        popl.particles[i] = popl.particles[k[i]]
     end
 
     #@info "\u1b[0KParticles repackaged (took $(1000 * (time() - start)) ms)"
-    n[] = c
+    popl.n[] = c
 end
+
+
+""" 
+    Shuffle a population using a permutation sampled from a uniform distribution
+    of permutations.
+"""
+function shuffle!(popl::Population)
+    for i in nparticles(popl):-1:2
+        j = rand(1:i)
+        popl.particles[i], popl.particles[j] = popl.particles[j], popl.particles[i]
+    end        
+end
+

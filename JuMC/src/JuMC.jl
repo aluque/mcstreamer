@@ -7,7 +7,7 @@ using StaticArrays
 using Interpolations
 using Polyester
 using LoopVectorization
-using Accessors
+using StructArrays
 using DocStringExtensions
 
 import JSON
@@ -24,9 +24,11 @@ const co = Constants
 include("util.jl")
 include("particledefs.jl")
 include("population.jl")
+include("mixed_population.jl")
 include("collisions.jl")
 #include("collpop.jl")
-#include("electron.jl")
+include("electron.jl")
+include("photon.jl")
 #include("electron_population.jl")
 include("lxcat.jl")
 

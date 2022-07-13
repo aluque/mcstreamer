@@ -2,11 +2,12 @@ abstract type CollisionProcess end
 
 struct NullCollision <: CollisionProcess end
 
+abstract type AbstractCollisionTable{T, C <: Tuple}; end
 """
     Struct with a set of collisions evaluated at the same energy grid.
 """
 @with_kw struct CollisionTable{T, C <: Tuple, V <: AbstractRange{T},
-                               A <: AbstractMatrix{T}}    
+                               A <: AbstractMatrix{T}} <: AbstractCollisionTable{T, C}
     "Each type of collision"
     proc::C
 
@@ -23,6 +24,20 @@ end
 Base.length(c::CollisionTable) = length(c.proc)
 
 maxrate(c::CollisionTable) = c.maxrate
+maxenergy(c::CollisionTable) = c.energy[end]
+
+# Checking for collisions involves many tests but some computations are common
+# common to all of them. Here we store them in a generic way. energy is passed
+# as an optimization.
+presample(c::CollisionTable, state, energy) = indweight(c.energy, energy)
+
+# Obtain probability rate of process j
+function rate(c::CollisionTable, j, pre)
+    k, w = pre
+
+    return w * c.rate[j, k] + (1 - w) * c.rate[j, k + 1]
+end
+
 
 #
 # Collision outcomes
@@ -36,18 +51,27 @@ abstract type AbstractOutcome end
 struct NullOutcome <: AbstractOutcome end
     
 # The colliding particle dissapears
-struct RemoveParticleOutcome{PT} <: AbstractOutcome end
+struct RemoveParticleOutcome{PS} <: AbstractOutcome
+    state::PS
+end
 
 # The state of the colliding particle changes to p
 struct StateChangeOutcome{PS} <: AbstractOutcome
-    p::PS
+    state::PS
 end
 
-# A new particle is created with state p2. The state of
-# the colliding particle changes to p1
+# A new particle is created with state state2. The state of
+# the colliding particle changes to state1
 struct NewParticleOutcome{PS1, PS2} <: AbstractOutcome
-    p1::PS1
-    p2::PS2
+    state1::PS1
+    state2::PS2
+end
+
+# A new particle with state p2 replaces an existing particle with state state1.
+# This is e.g. when a photon is absorbed and liberates an electron.
+struct ReplaceParticleOutcome{PS1, PS2} <: AbstractOutcome
+    state1::PS1
+    state2::PS2
 end
 
 @inline collide(c::NullCollision, k, energy) = NullOutcome()
@@ -59,23 +83,33 @@ Apply a `CollisionOutcome` to a population `population`.  `i` is the index
 of the colliding particle, which is needed if it experiences a change.
 We delegate to `population` handling the creation of a new particle.
 """
-@inline function apply!(population, outcome::NullOutcome, i)
-    # DO-nothing collision
+@inline function apply!(mpopl, outcome::NullOutcome, i)
 end
 
-@inline function apply!(population, outcome::StateChangeOutcome{PS}, i) where PS
-    set_particle_state!(population, particle_type(PS), i, outcome.p)
+@inline function apply!(mpopl, outcome::StateChangeOutcome{PS}, i) where PS
+    popl = get(mpopl, particle_type(PS))
+    popl.particles[i] = outcome.state
 end
 
-@inline function apply!(population, outcome::NewParticleOutcome{PS1, PS2}, i) where {PS1, PS2}
-    w = get_super_particle_state(population, particle_type(PS1), i).w
-    
-    set_particle_state!(population, particle_type(PS1), i, outcome.p1)
-    add_particle!(population, particle_type(PS2), outcome.p2, w)
+@inline function apply!(mpopl, outcome::NewParticleOutcome{PS1, PS2}, i) where {PS1, PS2}
+    popl1 = get(mpopl, particle_type(PS1))
+    popl1.particles[i] = outcome.state1
+
+    popl2 = get(mpopl, particle_type(PS2))
+    add_particle!(popl2, outcome.state2)
 end
 
-@inline function apply!(population, outcome::RemoveParticleOutcome{PT}, i) where PT
-    remove_particle!(population, PT, i)
+@inline function apply!(mpopl, outcome::RemoveParticleOutcome{PS}, i) where PS
+    popl = get(mpopl, particle_type(PS))
+    remove_particle!(popl, i)
+end
+
+@inline function apply!(mpopl, outcome::ReplaceParticleOutcome{PS1, PS2}, i) where {PS1, PS2}
+    popl1 = get(mpopl, particle_type(PS1))
+    remove_particle!(popl1, i)
+
+    popl2 = get(mpopl, particle_type(PS2))
+    add_particle!(popl2, outcome.state2)    
 end
 
 #
@@ -85,71 +119,37 @@ end
 abstract type AbstractCollisionTracker end
 struct VoidCollisionTracker end
 
-track(::AbstractCollisionTracker, outcome::AbstractOutcome, p::SuperParticleState) = nothing
+track(::AbstractCollisionTracker, outcome::AbstractOutcome) = nothing
 
-
-"""
-Check for the particles that are set to collide and then perform a
-(possibly null) collision
-"""
-function collisions!(population, particle_type, Δt, tracker=VoidCollisionTracker())
-    n = get_particle_count(population, particle_type)
-    
-    @batch for i in 1:n        
-        super_state = get_super_particle_state(population, particle_type, i)
-        s = super_state.s
-        s -= Δt
-        if s > 0
-            set_particle_super_state(population, particle_type, i,
-                                     @set super_state.s = s)            
-        else
-            state = super_state.state
-            
-            νmax = maxrate(population, particle_type)
-            
-            E = energy(state)
-            ξ = rand(typeof(E)) * νmax
-            
-            do_one_collision!(population, particle_type, super_state, ξ, i,
-                              E, tracker)
-
-            s = nextcol(νmax)
-            set_super_particle_state(population, particle_type, i,
-                                     @set super_state.s = s)            
-        end
-    end
-    
-    #println("$ncolls of $(pop.n) particles (fraction $(ncolls / (pop.n)))")
-    
-end
 
 indweight(colls::CollisionTable, E) = indweight(colls.energy, E)
 
 """
     Sample one (possibly null) collision.
 """    
-@generated function do_one_collision!(population, particle_type, super_state, ξ, i, energy,
-                                      tracker)
-    colls = get_collisions(population, particle_type)
-
+@generated function do_one_collision!(mpopl, colls::AbstractCollisionTable{T, C}, state, i, tracker) where {T, C}
     L = fieldcount(C)
 
     out = quote
         $(Expr(:meta, :inline))
-        k, w = indweight(colls, energy)
+        eng = energy(state)
+        pre = presample(colls, state, eng)
+        ξ = rand(T) * maxrate(colls)
+        
+        #k, w = indweight(colls, energy)
     end
     
     for j in 1:L
         push!(out.args,
               quote
-              @inbounds ν = w * colls.rate[$j, k] + (1 - w) * colls.rate[$j, k + 1]
+              ν = rate(colls, $j, pre)
               if ν > ξ                  
-                  outcome = collide(colls.proc[$j], state, energy)
-                  track(tracker, outcome, super_state)
-                  apply!(population, outcome, i)
-                return
+                  outcome = collide(colls.proc[$j], state, eng)
+                  track(tracker, outcome)
+                  apply!(mpopl, outcome, i)
+                  return
               else
-                ξ -= ν
+                  ξ -= ν
               end
               end)
     end

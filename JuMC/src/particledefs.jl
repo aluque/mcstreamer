@@ -34,26 +34,8 @@ name(p::ParticleType) = String(id(p))
     This is the abstract type that is sub-classed by structs that store the
     state of a given particle.  For example for electrons we may use
     ElectronState <: ParticleState that contains position, velocity etc.
+    All ParticleStates must contain at least these fields besides the particle
+    variables: `w`: particle weight, `s` normalized time to next collision, 
+    `active` whether the particle is active.
 """
-abstract type ParticleState; end
-
-"""
-    In a SuperParticleState we store the physical state of a particle
-    in `state` plus other variables required for the MC simulation.
-"""
-struct SuperParticleState{T, ST <: ParticleState}
-    "Particle state"
-    state::ST
-
-    "Particle weight"
-    w::T
-
-    "Time left for the next collision"
-    s::T
-    
-    "Is the particle active?"
-    active::Bool
-end
-
-SuperParticleState(state, w, s) = SuperParticleState(state, w, s, true)
-particle_type(::Type{SuperParticleState{T, ST}}) where {T, ST} = particle_type(ST)
+abstract type ParticleState{T}; end
