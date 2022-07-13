@@ -33,8 +33,16 @@ function resample!(popl, fields, nmax)
         checkbounds(Bool, p, I) || continue
 
         if p[I] > nmax
+            # Russian roulette
             wnew = k.w + w[I] / nmax
             k.w = wnew
+        elseif p[I] < nmax && k.w > 1
+            # Splitting
+            wnew = ceil(k.w / 2)
+            index = add_particle!(popl, popl.particles[i])
+            popl.particles.w[index] = wnew
+            k.w = k.w - wnew
+            p[I] += 1
         end
     end
 end

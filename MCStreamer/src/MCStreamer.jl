@@ -22,7 +22,7 @@ using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron,
     Population, nextcoll, ElectronState, MultiPopulation,
     actives, weight, advance!, collisions!, AbstractCollisionTracker,
-    eachparticle, remove_particle!, ZhelezniakCollisions, PhotonState
+    eachparticle, remove_particle!, add_particle!, ZhelezniakCollisions, PhotonState
 import JuMC
 
 include("autoencoder.jl")
