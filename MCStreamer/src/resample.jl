@@ -36,9 +36,9 @@ function resample!(popl, fields, nmax)
             # Russian roulette
             wnew = k.w + w[I] / nmax
             k.w = wnew
-        elseif p[I] < nmax && k.w > 1
+        elseif p[I] < nmax && k.w > 2
             # Splitting
-            wnew = ceil(k.w / 2)
+            wnew = round(k.w / 2)
             index = add_particle!(popl, popl.particles[i])
             popl.particles.w[index] = wnew
             k.w = k.w - wnew
