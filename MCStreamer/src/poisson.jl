@@ -41,14 +41,14 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, outpath)
     qfixed1 = denoise(denoiser, qfixed)
     qpart1 = denoise(denoiser, qpart)
 
-    if (poisson_save_n[] % 50) == 0
-        ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
+    # if (poisson_save_n[] % 50) == 0
+    #     ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
     
-        jldsave(ofile, true; grid, qfixed, qfixed1, qpart, qpart1)
-        @info "Saved file" ofile
-    end
+    #     jldsave(ofile, true; grid, qfixed, qfixed1, qpart, qpart1)
+    #     @info "Saved file" ofile
+    # end
     
-    poisson_save_n[] += 1
+    # poisson_save_n[] += 1
 
 
     fields.q[1:M, 1:N] .= qfixed1 .- qpart1

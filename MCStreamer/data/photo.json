@@ -1,6 +1,6 @@
 [
     {
-        "comment": "AL. Thu Jun  9 19:12:31 2022",
+        "comment": "AL. Thu Jun  9 19:12:31 2022.  Rescaling includes a factor (pq / (p + pq) = 0.038 for atm pressure.",
         "data": [
             [
                 15.6,
@@ -110,7 +110,8 @@
         "kind": "PHOTOEMISSION",
         "target": "N2",
 	"absorber": "O2",
-	"rescale": 0.06,
+	"rescale": 0.00228,
+	"weight_scale": 100.0
 	"chi_min": 9.9e-23,
 	"chi_max": 5.7e-21
     }

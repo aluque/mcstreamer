@@ -18,21 +18,41 @@ Base.pairs(mp::MultiPopulation) = pairs(mp.index)
 
 
 """
-    Advance without collisions the particles in the population.
+    Advance the particles in the population performing, if needed, intermediate
+    collisions.
 """
-function advance!(mpopl, efield, Δt)
+function advance!(mpopl, efield, Δt, tracker=VoidCollisionTracker())
     # WARN: Possibly type-unstable
     for (sym, popl) in pairs(mpopl)
         @batch for i in 1:popl.n[]
             l = LazyRow(popl.particles, i)
             l.active || continue
-            
-            state = instantiate(l)
-            new_state = advance_free(state, efield, Δt)
-            popl.particles[i] = new_state
+
+            trem = Δt
+            while trem > 0
+                tnextcoll = l.s / maxrate(popl.collisions)
+                if trem > tnextcoll
+                    t = tnextcoll
+                    collides = true
+                else
+                    t = trem
+                    collides = false
+                    l.s -= t * maxrate(popl.collisions)
+                end
+                state = instantiate(l)
+                new_state = advance_free(state, efield, t)
+                popl.particles[i] = new_state
+
+                if collides
+                    do_one_collision!(mpopl, popl.collisions, new_state, i, tracker)
+                    l.s = nextcoll()
+                end
+                trem -= t
+            end
         end
     end
 end
+
 
 """
 Check for the particles that are set to collide and then perform a

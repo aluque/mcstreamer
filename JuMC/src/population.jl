@@ -22,7 +22,6 @@ instantiate(ps::LazyRow{P}) where P <: ParticleState = getfield(ps, 1)[getfield(
     Initialize a population with space to contain `max_particles`,
     starting with a vector of super-particle states.
     The collision table must be also given in `collisions`.
-
 """
 function Population(max_particles::Int, inparticles::Vector{PS},
                     collisions) where PS <: ParticleState

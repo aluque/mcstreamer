@@ -37,9 +37,10 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     ecolls = CollisionTable(proc, energy, rate, maxrate)
     
     
-    Δt = 10^floor(log10(1 / (2 * ecolls.maxrate))) / 4
+    Δt = input["dt"]
+    
     @info "max collision rate" maxrate
-    @info "Time step derived from collision rate" Δt
+    @info "Time step" Δt
 
     # For debug: limit tmax by hand
     tmax = isnothing(tmax) ? input["tmax"] : tmax
@@ -168,7 +169,6 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
     # Measure time used in different work
     elapsed_poisson = 0.0
     elapsed_advance = 0.0
-    elapsed_collisions = 0.0
     elapsed_resample = 0.0
         
     for i in 1:n
@@ -180,18 +180,18 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         end
         
         atstep(output, t) do j
-            # Use true here to enable compression.
-            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false; fields,
-                    electron=popl)
+            # Use true here to enable compression. Add electron=popl to save all
+            # electron states.
+
+            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false; fields);
             
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
             @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
-            @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_collisions elapsed_resample
+            @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_resample
         end
 
-        elapsed_advance += @elapsed advance!(mpopl, efield, Δt)
-        elapsed_collisions += @elapsed collisions!(mpopl, Δt, tracker)
+        elapsed_advance += @elapsed advance!(mpopl, efield, Δt, tracker)
 
         if iszero(i % 10000)
             mean_energy = JuMC.meanenergy(popl)

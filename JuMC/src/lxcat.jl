@@ -39,6 +39,10 @@ function load_lxcat(fnames, densities, energy)
         if haskey(item, "rescale")
             cs0 .*= item["rescale"]
         end
+
+        if haskey(item, "weight_scale")
+            cs0 .*= item["weight_scale"]
+        end
         
         # For performance first we interpolate to an uniform grid
         itp = extrapolate(interpolate((energy0,), cs0, Gridded(Linear())),
@@ -70,7 +74,7 @@ function load_lxcat(fnames, densities, energy)
                   νmin = co.c * dens[itm["absorber"]] * itm["chi_min"]
                   νmax = co.c * dens[itm["absorber"]] * itm["chi_max"]
                   
-                  PhotoEmission(νmin, νmax)
+                  PhotoEmission(νmin, νmax, get(itm, "weight_scale", 1))
                   end
 
                   )
