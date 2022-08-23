@@ -33,7 +33,7 @@ function plot(fields; rlim=nothing, zlim=nothing, kw...)
     plt.figure("Electron density")
     ne = @views -dropdims(sum(fields.qpart[1:M, 1:N, begin:end], dims=3), dims=3)
     lognorm = plt.matplotlib.colors.LogNorm()
-    plt.pcolormesh(zf, rf, ne, cmap="gnuplot2", vmin=1e15, vmax=1e20, norm=lognorm; kw...)
+    plt.pcolormesh(zf, rf, ne, cmap="gnuplot2", vmin=1e15, vmax=1e21, norm=lognorm; kw...)
     cbar = plt.colorbar(label="Electron density (m\$^{-3}\$)")
     setlims(rlim, zlim)
 
