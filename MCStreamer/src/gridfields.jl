@@ -139,7 +139,13 @@ function (fieldinterp::FieldInterp)(x)
     efield = @SVector [er1 * x[1] / r, er1 * x[2] / r, ez1]
 
     # Large electric fields are surely a bug
-    @assert norm(efield) < 1e8 "Too high electric field; something is wrong with your code or with you."
+    if norm(efield) > 1e8
+        jldsave("MCStreamer_error_fields.jld", false; fields);
+        @info "Too high electric field" x efield er1 ez1
+        
+        error("Too high electric field")
+    end
+
     return efield
 end
 
