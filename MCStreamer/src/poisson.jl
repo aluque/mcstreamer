@@ -14,32 +14,21 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, outpath)
     density!(grid, fields.qpart, mpopl, Electron, -1.0)
 
     # Summing along threads: TODO: pre-allocate
-    qfixed = zeros(Float32, M, N)
-    qpart = zeros(Float32, M, N)
+    q = zeros(Float32, M, N)
     
     ci = CartesianIndices(axes(fields.q))
-    eps = 1e13
     
     for j in 1:N
         for i in 1:M
-            # Adding a fixed density of 1e13 as a hack
-            qfixed[i, j] = reduce(+, @view(fields.qfixed[i, j, :])) + eps
-            qpart[i, j] = -reduce(+, @view(fields.qpart[i, j, :])) + eps
+            q[i, j] = reduce(+, @view(fields.qfixed[i, j, :]))
+            q[i, j] += reduce(+, @view(fields.qpart[i, j, :]))
 
-            # Until we implement using the charges as denoising input we use
-            # yet another horrible hack to prevent negative densities in the fixed
-            # charges, which are created by attachment.
-            if qfixed[i, j] < 0
-                qpart[i, j] -= qfixed[i, j] - eps
-                qfixed[i, j] = eps
-            end
         end
     end
 
     
     # De-noising
-    qfixed1 = denoise(denoiser, qfixed)
-    qpart1 = denoise(denoiser, qpart)
+    q1 = denoise(denoiser, q)
 
     # if (poisson_save_n[] % 50) == 0
     #     ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
@@ -51,7 +40,7 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, outpath)
     # poisson_save_n[] += 1
 
 
-    fields.q[1:M, 1:N] .= qfixed1 .- qpart1
+    fields.q[1:M, 1:N] .= q1
     
     
     Multigrid.solve(mg, parent(fields.u), parent(fields.q), ws)

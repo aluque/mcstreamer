@@ -113,8 +113,8 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     if haskey(input, "denoise")
         modelfname = joinpath(dirname(finput), input["denoise"]["model"])
         
-        denoiser = Denoiser(modelfname, (0.0, 1.0),
-                            Tuple(input["denoise"]["log10range"]))
+        denoiser = Denoiser(modelfname, (-1.0, 1.0),
+                            Tuple(input["denoise"]["q_range"]))
     else
         denoiser = NullDenoiser()
     end

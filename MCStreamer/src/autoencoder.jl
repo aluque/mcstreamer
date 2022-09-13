@@ -10,21 +10,22 @@ models = PyNULL() # tensorflow.keras.models
 
 
 """
-A struct with all the data required to de-noise an array with electron
+A struct with all the data required to de-noise an array with charge
 density.
 """
 struct Denoiser{T}
     model::PyObject
 
     nn_range::NTuple{2, T}
-    logdens_range::NTuple{2, T}
+    q_range::NTuple{2, T}
 end
 
 
 """ 
     Denoiser(model_name::String, patch_size, step, nn_range, logdens_range)
 
-Init a Denoiser struct wreading a saved keras model called `model_name`. """
+Init a Denoiser struct wreading a saved keras model called `model_name`. 
+"""
 function Denoiser(model_name::String, args...)
     model = models.load_model(model_name;
                               custom_objects=Dict("custom_loss_4" => x -> nothing))
@@ -34,17 +35,17 @@ end
 
 
 """
-    denoise(d::Denoiser, ne)
+    denoise(d::Denoiser, q)
 
-Use the denoiser `d` to remove noise from the electron density `ne`.
+Use the denoiser `d` to remove noise from the charge density `q`.
 """
-function denoise(d::Denoiser{T}, ne) where T    
-    ne1 = reshape(ne, (1, size(ne)..., 1))
+function denoise(d::Denoiser{T}, q) where T
+    q1 = reshape(ne, (1, size(q)..., 1))
     
-    normne = rescale.(log10.(ne1), Ref(d.logdens_range), Ref(d.nn_range))
+    normq = rescale.(q1, Ref(d.q_range), Ref(d.nn_range))
 
-    pypred = pycall(d.model.predict, PyArray, PyReverseDims(normne))
-    pypred .= 10 .^ rescale.(pypred, Ref(d.nn_range), Ref(d.logdens_range))
+    pypred = pycall(d.model.predict, PyArray, PyReverseDims(normq))
+    pypred .= rescale.(pypred, Ref(d.nn_range), Ref(d.q_range))
 
     # move to julia Array (with copy)
     pred = copy((@view pypred[1, :, :, 1])')
