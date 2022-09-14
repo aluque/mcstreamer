@@ -16,7 +16,8 @@ function TimeStepper(step)
     TimeStepper(zero(step), step)
 end
 
-""" Checks if it is time to advance the counter.  In that case first calls
+""" 
+    Checks if it is time to advance the counter.  In that case first calls
     function `f` as `f(i)` where `i` is the counter _before_ the increase.
 """
 function atstep(f::Function, ts::TimeStepper, t)
