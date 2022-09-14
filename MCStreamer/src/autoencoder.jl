@@ -40,7 +40,7 @@ end
 Use the denoiser `d` to remove noise from the charge density `q`.
 """
 function denoise(d::Denoiser{T}, q) where T
-    q1 = reshape(ne, (1, size(q)..., 1))
+    q1 = reshape(q, (1, size(q)..., 1))
     
     normq = rescale.(q1, Ref(d.q_range), Ref(d.nn_range))
 
