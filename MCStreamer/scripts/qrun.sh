@@ -2,7 +2,7 @@
 # Script to start a simulation in the qsub/slurm queue
 # Alejandro Luque - 2012
 
-JULIA_EXEC=julia1.7
+JULIA_EXEC=julia1.8
 UNAME_FULL=`uname -a`
 DATE=`date`
 
