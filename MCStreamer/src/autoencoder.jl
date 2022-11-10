@@ -18,11 +18,16 @@ struct Denoiser{T}
 
     nn_range::NTuple{2, T}
     q_range::NTuple{2, T}
+
+    # The denoising will be active only after this time
+    activ_time::T
 end
 
 
+Denoiser(model, nn_range, q_range) = Denoiser(model, nn_range, q_range, 0)
+
 """ 
-    Denoiser(model_name::String, patch_size, step, nn_range, logdens_range)
+    Denoiser(model_name::String, args...)
 
 Init a Denoiser struct wreading a saved keras model called `model_name`. 
 """
@@ -45,12 +50,19 @@ function denoise(d::Denoiser{T}, q) where T
     normq = rescale.(q1, Ref(d.q_range), Ref(d.nn_range))
 
     pypred = pycall(d.model.predict, PyArray, PyReverseDims(normq))
-    pypred .= rescale.(pypred, Ref(d.nn_range), Ref(d.q_range))
 
     # move to julia Array (with copy)
     pred = copy((@view pypred[1, :, :, 1])')
 
     return pred
+end
+
+function denoise(d::Denoiser, q, t)
+    if t >= d.activ_time
+        return denoise(d, q)
+    else
+        return q
+    end
 end
 
 
@@ -80,6 +92,7 @@ end
 struct NullDenoiser; end
 
 denoise(d::NullDenoiser, ne) = ne
+denoise(d::NullDenoiser, ne, t) = denoise(d, ne, t)
 
 
 function __init__()    

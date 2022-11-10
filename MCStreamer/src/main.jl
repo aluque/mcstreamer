@@ -9,6 +9,9 @@ function start()
     end
 end
 
+"""
+    Read parameters from a file in `finput` and start the simulation.    
+"""
 function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     poisson_save_n[] = 0
     
@@ -82,17 +85,18 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     grid = Grid(R, L, M, N)
     fields = GridFields(grid)
     density!(grid, fields.qfixed, mpopl, Electron, 1.0)
-    
-    
+        
     # Poisson
     bc = ((LeftBnd(), Dirichlet()),
           (RightBnd(), Dirichlet()),
           (TopBnd(), Neumann()),
           (BottomBnd(), Neumann()))
+
+    poisson_levels = get(input, "poisson_levels", 9)
     
     mg = MGConfig(bc=bc, s=co.elementary_charge * dz(grid)^2 / co.ϵ0,
                   conn=Multigrid.CylindricalConnector{1}(),
-                  levels=9,
+                  levels=poisson_levels,
                   tolerance=1.0e8,
                   smooth1=2,
                   smooth2=2,
@@ -112,9 +116,9 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
 
     if haskey(input, "denoise")
         modelfname = joinpath(dirname(finput), input["denoise"]["model"])
-        
+        activ_time = get(input["denoise"], "activ_time", 0.0)
         denoiser = Denoiser(modelfname, (-1.0, 1.0),
-                            Tuple(input["denoise"]["q_range"]))
+                            Tuple(input["denoise"]["q_range"]), activ_time)
     else
         denoiser = NullDenoiser()
     end
@@ -124,7 +128,6 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         return (;mpopl, efield, eb, Δt, fields, mg, ws)
     end
 
-    # Debuggin help
     if run
         nsteps(mpopl, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
                Δt_poisson, Δt_output, Δt_resample,
@@ -176,14 +179,15 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         
         atstep(poisson, t) do _
             elapsed_poisson += @elapsed poisson!(fields, mpopl, eb, mg, ws,
-                                                 denoiser, outpath)
+                                                 denoiser, t, outpath)
         end
         
         atstep(output, t) do j
             # Use true here to enable compression. Add electron=popl to save all
             # electron states.
 
-            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false; fields);
+            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false;
+                    iotype=IOStream, fields);
             
             active_superparticles = actives(popl)
             physical_particles = weight(popl)

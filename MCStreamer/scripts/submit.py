@@ -26,7 +26,6 @@ class Submission(object):
         self.only_print = args.only_print
         self.extra_args = args.args
         
-        
     def export(self):
         env = encode_envlist({
             'INPUT_FILE': self.input_file,
@@ -46,7 +45,6 @@ class Submission(object):
             call(cmd, shell=True)
         else:
             print(cmd)
-
             
 class Qsub(Submission):
     def submit_command(self):

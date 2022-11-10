@@ -3,7 +3,7 @@ const poisson_save_n = Ref(0)
 """
     Solve Poisson equation and compute the electrostatic fields.
 """
-function poisson!(fields, mpopl, eb, mg, ws, denoiser, outpath)
+function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! remove outpath when finished debugging
     g = mg.g
     @unpack grid, u, er, ez = fields
@@ -28,7 +28,7 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, outpath)
 
     
     # De-noising
-    q1 = denoise(denoiser, q)
+    q1 = denoise(denoiser, q, t)
 
     # if (poisson_save_n[] % 50) == 0
     #     ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
