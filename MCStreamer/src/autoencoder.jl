@@ -92,7 +92,7 @@ end
 struct NullDenoiser; end
 
 denoise(d::NullDenoiser, ne) = ne
-denoise(d::NullDenoiser, ne, t) = denoise(d, ne, t)
+denoise(d::NullDenoiser, ne, t) = denoise(d, ne)
 
 
 function __init__()    
