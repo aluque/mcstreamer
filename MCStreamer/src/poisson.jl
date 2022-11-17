@@ -22,7 +22,7 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
         for i in 1:M
             q[i, j] = reduce(+, @view(fields.qfixed[i, j, :]))
             q[i, j] += reduce(+, @view(fields.qpart[i, j, :]))
-
+            q[i, j] *= co.elementary_charge
         end
     end
 

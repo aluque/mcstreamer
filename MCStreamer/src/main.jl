@@ -94,7 +94,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
 
     poisson_levels = get(input, "poisson_levels", 9)
     
-    mg = MGConfig(bc=bc, s=co.elementary_charge * dz(grid)^2 / co.ϵ0,
+    mg = MGConfig(bc=bc, s=dz(grid)^2 / co.ϵ0,
                   conn=Multigrid.CylindricalConnector{1}(),
                   levels=poisson_levels,
                   tolerance=1.0e8,
