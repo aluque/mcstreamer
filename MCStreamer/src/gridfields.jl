@@ -16,6 +16,12 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # Charge density
     q::A
 
+    # Fluid electron density
+    ne::A
+
+    # derivative of fluid electron density
+    dne::A
+    
     # Electrostatic potential
     u::A
     
@@ -36,13 +42,15 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         qfixed = calloc_centers_threads(T, grid)
         qpart = calloc_centers_threads(T, grid)
         q = calloc_centers(T, grid)
+        ne = calloc_centers(T, grid, 2)
+        dne = calloc_centers(T, grid, 2)
         u = calloc_centers(T, grid)
         c = calloc_centers(T, grid)
         er = calloc_faces(T, grid)
         ez = calloc_faces(T, grid)
         p = calloc_faces(Int, grid)
         
-        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q, u, er, ez, c, p)
+        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q, ne, dne, u, er, ez, c, p)
     end
 end
 

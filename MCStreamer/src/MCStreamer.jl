@@ -17,6 +17,7 @@ using Logging
 using Dates
 using LinearAlgebra
 using TOML
+using Polyester
 
 using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron,
@@ -35,6 +36,7 @@ include("resample.jl")
 include("grid.jl")
 include("gridfields.jl")
 include("poisson.jl")
+include("fluid.jl")
 include("plot.jl")
 
 

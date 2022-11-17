@@ -123,15 +123,25 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         denoiser = NullDenoiser()
     end
 
+    # Fluid
+    if haskey(input, "needle")
+        needle = input["needle"]
+        setneedle!(fields, needle["sigma_z"], needle["sigma_r"],
+                   needle["position_z"], needle["position_r"], needle["ne0"])
+        hasfluid = true
+    else
+        hasfluid = false
+    end
+    
     
     if debug
-        return (;mpopl, efield, eb, Δt, fields, mg, ws)
+        return (;mpopl, efield, eb, Δt, fields, mg, ws, grid)
     end
 
     if run
         nsteps(mpopl, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
                Δt_poisson, Δt_output, Δt_resample,
-               fields, mg, ws, denoiser; outpath)
+               fields, mg, ws, denoiser, hasfluid; outpath)
     end
     
     # k = collrates(pind, Electron())
@@ -159,7 +169,7 @@ end
     * `denoiser`: a Denoiser
 """
 function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
-                fields, mg, ws, denoiser; outpath="")
+                fields, mg, ws, denoiser, hasfluid; outpath="")
 
     popl = get(mpopl, Electron)
     ecolls = popl.collisions
@@ -218,6 +228,11 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                         "repackaging is not conserving the number of particles")
                 
             end
+        end
+
+        if hasfluid
+            setdne!(fields)
+            euler!(fields, Δt)
         end
         
         repack!(popl)
