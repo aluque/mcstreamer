@@ -2,7 +2,7 @@
   Plotting functions.
 =#
 
-function plot(fields::GridFields; titleprefix="", rlim=nothing, zlim=nothing,
+function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
               savedir=nothing, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
