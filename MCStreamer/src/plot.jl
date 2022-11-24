@@ -3,7 +3,7 @@
 =#
 
 function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
-              savedir=nothing, kw...)
+              savedir=nothing, charge_scale=co.elementary_charge, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
@@ -28,11 +28,11 @@ function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
     plt.figure("$titleprefix Charge density")
     q = @view(fields.q[i1:i2, j1:j2])
     qmax, qmin = extrema(q)
-    absmax = max(abs(qmax), abs(qmin)) * co.elementary_charge
+    absmax = max(abs(qmax), abs(qmin)) * charge_scale
     
     plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
                    rf[i1:(i2 + 1)] ./ co.milli,
-                   q .* co.elementary_charge;
+                   q .* charge_scale;
                    cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
     cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")
 
