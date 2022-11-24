@@ -238,3 +238,16 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         repack!(popl)
     end
 end
+
+"""
+    Read the electric field from input, allowing for units to be specified.
+"""
+function getfield(input)
+    units = get(input, "field_units", "Td")
+    scale = Dict("Td" => co.Td * co.nair,
+                 "kV/cm" => 1e5,
+                 "V/m" => 1.0,
+                 "" => 1.0)(units)
+    
+    -input["eb"] * scale
+end
