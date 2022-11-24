@@ -97,7 +97,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     mg = MGConfig(bc=bc, s=dz(grid)^2 / co.ϵ0,
                   conn=Multigrid.CylindricalConnector{1}(),
                   levels=poisson_levels,
-                  tolerance=1.0e8,
+                  tolerance=1.0e8 * co.elementary_charge,
                   smooth1=2,
                   smooth2=2,
                   verbosity=0,
