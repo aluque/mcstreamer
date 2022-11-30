@@ -68,6 +68,8 @@ class Slurm(Submission):
                 '--cpus-per-task': self.nthreads,
                 '-p': self.queue,
                 '-o': '%s' % self.log_fname,
+                '--mem-per-cpu': '4GB',
+                '--time': '8-00:00',
                 '--export': self.export()}
 
         return ('sbatch %s %s %s'
@@ -90,7 +92,7 @@ def main():
                         help="Batch system to use", default='slurm')
 
     parser.add_argument("--nthreads", "-t", type=int,
-                        help="Number of threads to use", default=1)
+                        help="Number of threads to use", default=32)
 
     parser.add_argument("--only-print", "-p",
                         action="store_true",
