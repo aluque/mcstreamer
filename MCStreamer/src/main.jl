@@ -247,7 +247,7 @@ function getfield(input)
     scale = Dict("Td" => co.Td * co.nair,
                  "kV/cm" => 1e5,
                  "V/m" => 1.0,
-                 "" => 1.0)(units)
+                 "" => 1.0)[units]
     
     -input["eb"] * scale
 end
