@@ -48,7 +48,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     # For debug: limit tmax by hand
     tmax = isnothing(tmax) ? input["tmax"] : tmax
 
-    eb::Float64 = -input["eb"] * co.Td * co.nair
+    eb::Float64 = getfield(input)
     
     T = Float64
     maxp::Int = input["maxp"]
