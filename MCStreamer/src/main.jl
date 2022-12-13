@@ -56,12 +56,16 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     # Initialize the electron population
     w::Float64 = input["seed"]["w"]
     z0::Float64 = input["seed"]["z0"]
+    z1::Float64 = get(input["seed"], "z1", z0)
+    
     v0 = @SVector zeros(T, 3)
+    weight::Float64 = get(input, "initial_weight", 1.0)
+    
     #v0 = @SVector [0, 0, sqrt(2 * 100 * co.eV / co.electron_mass)]
     
     init_particles = map(1:n) do _
-        x = @SVector [w * randn(), w * randn(), z0 + w * randn()]
-        ElectronState(x, v0)
+        x = sampseg(z0, z1, w)
+        ElectronState(x, v0, weight)
     end
 
     population_index = Pair{Symbol, Any}[:electron => Population(maxp, init_particles, ecolls)]
@@ -238,6 +242,32 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         repack!(popl)
     end
 end
+
+
+"""
+    Sample from a spatial distribution consisting in a vertical segment with a gaussian blur.
+"""
+function sampseg(z0, z1, w)
+    @assert z1 >= z0
+    l = z1 - z0
+
+    # prob. of being closest to a point in the segment
+    p = l / (l + sqrt(2π) * w)
+    
+    if (rand() < p)
+        # closest to a point in the segment
+        u = rand()
+        return @SVector [w * randn(), w * randn(), z0 + u * l]
+    else
+        s = @SVector [w * randn(), w * randn(), w * randn()]
+        if s[3] > 0
+            return s + @SVector [0, 0, z1]
+        else
+            return s + @SVector [0, 0, z0]
+        end
+    end    
+end
+
 
 """
     Read the electric field from input, allowing for units to be specified.
