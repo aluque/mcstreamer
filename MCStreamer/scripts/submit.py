@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """ A python script to submit to the qsub queue. """
 
 import sys
