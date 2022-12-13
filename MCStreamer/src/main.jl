@@ -276,6 +276,7 @@ function getfield(input)
     units = get(input, "field_units", "Td")
     scale = Dict("Td" => co.Td * co.nair,
                  "kV/cm" => 1e5,
+                 "MV/m" => 1e6,
                  "V/m" => 1.0,
                  "" => 1.0)[units]
     
