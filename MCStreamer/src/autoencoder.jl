@@ -2,8 +2,6 @@
 module Autoencoder
 
 using PyCall
-using HDF5
-import PyPlot as plt
 
 # Python modules; initialized later
 models = PyNULL() # tensorflow.keras.models
@@ -73,18 +71,6 @@ Rescale a number x such that the interval (a1, b1) is mapped to (a2, b2).
 """
 rescale(x, (a1, b1), (a2, b2)) = a2 + (x - a1) * (b2 - a2) / (b1 - a1)
     
-
-function load_density(fname)
-    local ne
-    h5open(fname, "r") do fid
-        # First dataset from first group.
-        group = fid[keys(fid)[1]]
-        ne = Array(group[keys(group)[1]])
-    end
-
-    
-    return ne
-end
 
 """
     A Null denoiser that does nothing.
