@@ -74,6 +74,16 @@ struct ReplaceParticleOutcome{PS1, PS2} <: AbstractOutcome
     state2::PS2
 end
 
+# For Poisson photon generations we may want to generate many particles in a single
+# event. To sample them we create instances of this.
+struct MultiplePhotonOutcome{PS1, C} <: AbstractOutcome
+    # The new state of the electron producing the emission
+    nphot::Int
+    state1::PS1
+    photoemit::C
+end
+
+
 @inline collide(c::NullCollision, k, energy) = NullOutcome()
 
 """
@@ -111,6 +121,24 @@ end
     popl2 = get(mpopl, particle_type(PS2))
     add_particle!(popl2, outcome.state2)    
 end
+
+@inline function apply!(mpopl, outcome::MultiplePhotonOutcome{PS1, C}, i) where {PS1, C}
+    popl1 = get(mpopl, particle_type(PS1))
+    popl1.particles[i] = outcome.state1
+    T = eltype(PS1)
+    p = outcome.state1
+    
+    (;log_νmin, log_νmax, weight_scale) = outcome.photoemit
+    photons = get(mpopl, Photon)
+
+    for i in 1:outcome.nphot
+        v = randsphere() .* co.c
+        ν = exp(log_νmin + (log_νmax - log_νmin) * rand())
+        p2 = PhotonState{T}(p.x, v, ν, 1.0, nextcoll(), p.active)
+        add_particle!(photons, p2)    
+    end
+end
+
 
 #
 # With collision tracker we can define a callback executed whenever a collision

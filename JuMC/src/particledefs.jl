@@ -39,3 +39,5 @@ name(p::ParticleType) = String(id(p))
     `active` whether the particle is active.
 """
 abstract type ParticleState{T}; end
+
+Base.eltype(p::ParticleState{T}) where {T} = T

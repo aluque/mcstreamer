@@ -9,6 +9,7 @@ using Polyester
 using LoopVectorization
 using StructArrays
 using DocStringExtensions
+using Distributions
 
 import JSON
 

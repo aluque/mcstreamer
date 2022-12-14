@@ -135,11 +135,6 @@ function collide(c::Elastic, p::ElectronState{T}, energy) where T
 end
 
 function collide(c::PhotoEmission, p::ElectronState{T}, energy) where T
-    v = randsphere() .* co.c
-    (;log_νmin, log_νmax, weight_scale) = c
-
-    ν = exp(log_νmin + (log_νmax - log_νmin) * rand())
-    p2 = PhotonState{T}(p.x, v, ν, p.w / weight_scale, nextcoll(), p.active)
-
-    NewParticleOutcome(p, p2)
+    nphot = rand(Poisson(p.w))
+    MultiplePhotonOutcome(nphot, p, c)
 end
