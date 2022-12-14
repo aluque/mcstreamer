@@ -70,7 +70,7 @@ class Slurm(Submission):
                 '-p': self.queue,
                 '-o': '%s' % self.log_fname,
                 '--mem-per-cpu': '4GB',
-                '--time': '8-00:00',
+                '--time': '4-00:00',
                 '--export': self.export()}
 
         return ('sbatch %s %s %s'
