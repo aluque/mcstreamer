@@ -26,6 +26,7 @@ function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
     (j1, j2) = indexlims(zlim, zc, N)
 
     plt.figure("$titleprefix Charge density")
+    plt.clf()
     q = @view(fields.q[i1:i2, j1:j2])
     qmax, qmin = extrema(q)
     absmax = max(abs(qmax), abs(qmin)) * charge_scale
@@ -49,6 +50,7 @@ function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
     end
     
     plt.figure("$titleprefix Electric field")
+    plt.clf()
     eabs = @. @views sqrt(0.25 * (fields.er[i1:i2, j1:j2] + fields.er[(i1 + 1):(i2 + 1), j1:j2])^2 +
                           0.25 * (fields.ez[i1:i2, j1:j2] + fields.ez[i1:i2, (j1 + 1):(j2 + 1)])^2)
 
@@ -68,6 +70,7 @@ function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
     end
 
     plt.figure("$titleprefix Electron density")
+    plt.clf()
     ne = @views -dropdims(sum(fields.qpart[i1:i2, j1:j2, begin:end], dims=3), dims=3)
     lognorm = plt.matplotlib.colors.LogNorm(vmin=1e15, vmax=1e21)
     plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
