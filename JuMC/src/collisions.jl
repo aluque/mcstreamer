@@ -125,7 +125,8 @@ end
 @inline function apply!(mpopl, outcome::MultiplePhotonOutcome{PS1, C}, i) where {PS1, C}
     popl1 = get(mpopl, particle_type(PS1))
     popl1.particles[i] = outcome.state1
-    T = eltype(PS1)
+    T = eltype(outcome.state1)
+
     p = outcome.state1
     
     (;log_νmin, log_νmax, weight_scale) = outcome.photoemit
