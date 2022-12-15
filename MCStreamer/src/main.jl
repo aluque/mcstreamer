@@ -16,7 +16,10 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     poisson_save_n[] = 0
     
     input = TOML.parsefile(finput)
-    @info "Input read from $finput" input
+    io = IOBuffer()
+    MCStreamer.pretty_print(IOContext(io, :color => true), input)
+    
+    @info "Input read from $finput" * "\n" * String(take!(io))
     
     L::Float64 = input["domain"]["L"]
     R::Float64 = input["domain"]["R"]
@@ -139,7 +142,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     
     if debug
-        return (;mpopl, efield, eb, Δt, fields, mg, ws, grid)
+        return (;mpopl, efield, eb, Δt, fields, mg, ws, grid, input)
     end
 
     if run
@@ -282,3 +285,22 @@ function getfield(input)
     
     -input["eb"] * scale
 end
+
+function pretty_print(io::IO, d::Dict, level=0)
+    for (k,v) in d
+        if typeof(v) <: Dict
+            print(io, join(fill(" ", level * 8)))
+            printstyled(io, k, color=:light_yellow, bold=true)            
+            printstyled(io, " => \n", color=:light_black)            
+            pretty_print(io, v, level + 1)
+        else
+            print(io, join(fill(" ", level * 8)))
+            printstyled(io, k, color=:light_yellow, bold=true)
+            printstyled(io, " => ", color=:light_black)
+            printstyled(io, repr(v) * "\n", color=:blue) 
+        end
+    end
+    nothing
+end
+
+pretty_print(d::Dict, kw...) = pretty_print(stdout, d, kw...)
