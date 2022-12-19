@@ -24,8 +24,17 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     L::Float64 = input["domain"]["L"]
     R::Float64 = input["domain"]["R"]
     
+    M::Int = input["domain"]["M"]
+    N::Int = input["domain"]["N"]
+    
+    maxc::Int = input["maxc"]
+    maxp::Int = input["maxp"]
+
     n::Int = input["n"]
     
+    grid = Grid(R, L, M, N)
+    fields = GridFields(grid)
+
     densities = Dict("N2" => co.nair * 0.79,
                      "O2" => co.nair * 0.21)
     
@@ -41,8 +50,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
 
     proc, rate, maxrate = load_lxcat(csfiles, densities, energy)
     ecolls = CollisionTable(proc, energy, rate, maxrate)
-    
-    
+        
     Δt = input["dt"]
     
     @info "max collision rate" maxrate
@@ -54,7 +62,6 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     eb::Float64 = getfield(input)
     
     T = Float64
-    maxp::Int = input["maxp"]
     
     # Initialize the electron population
     w::Float64 = input["seed"]["w"]
@@ -63,16 +70,20 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     v0 = @SVector zeros(T, 3)
     weight::Float64 = get(input, "initial_weight", 1.0)
-    
-    #v0 = @SVector [0, 0, sqrt(2 * 100 * co.eV / co.electron_mass)]
-    
-    init_particles = map(1:n) do _
-        x = sampseg(z0, z1, w)
-        ElectronState(x, v0, weight)
+    if !("init_files" in keys(input))
+        init_particles = map(1:n) do _
+            x = sampseg(z0, z1, w)
+            ElectronState(x, v0, weight)
+        end
+
+    else
+        nefile = joinpath(dirname(finput), input["init_files"]["ne_file"])
+        qfile = joinpath(dirname(finput), input["init_files"]["q_file"])
+        
+        init_particles = initfromfiles!(fields, nefile, qfile, maxc)
     end
-
     population_index = Pair{Symbol, Any}[:electron => Population(maxp, init_particles, ecolls)]
-
+        
     # See if there is photo-emission; only in that case we include
     # photo-ionization
     ipe = findfirst(p -> p isa JuMC.PhotoEmission, ecolls.proc)
@@ -86,13 +97,10 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     mpopl = MultiPopulation(population_index...)
                             
-    M::Int = input["domain"]["M"]
-    N::Int = input["domain"]["N"]
+    if !("init_files" in keys(input))
+        density!(grid, fields.qfixed, mpopl, Electron, 1.0)
+    end
     
-    grid = Grid(R, L, M, N)
-    fields = GridFields(grid)
-    density!(grid, fields.qfixed, mpopl, Electron, 1.0)
-        
     # Poisson
     bc = ((LeftBnd(), Dirichlet()),
           (RightBnd(), Dirichlet()),
@@ -119,7 +127,6 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     outpath = splitext(abspath(finput))[1]
     isdir(outpath) || mkdir(outpath)
 
-    maxc::Int = input["maxc"]
 
     if haskey(input, "denoise")
         modelfname = joinpath(dirname(finput), input["denoise"]["model"])

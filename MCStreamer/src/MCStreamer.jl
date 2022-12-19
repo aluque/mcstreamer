@@ -1,6 +1,7 @@
 module MCStreamer
 
 using StaticArrays 
+using Distributions: Poisson
 using StatsBase: sample, pweights
 using Constants: co
 using UnPack
@@ -18,6 +19,7 @@ using Dates
 using LinearAlgebra
 using TOML
 using Polyester
+using HDF5
 
 using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron,
@@ -38,6 +40,6 @@ include("gridfields.jl")
 include("poisson.jl")
 include("fluid.jl")
 include("plot.jl")
-
+include("initdens.jl")
 
 end # module
