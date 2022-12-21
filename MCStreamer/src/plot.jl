@@ -3,7 +3,7 @@
 =#
 
 function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
-              savedir=nothing, charge_scale=co.elementary_charge, kw...)
+              savedir=nothing, charge_scale=1, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
