@@ -79,8 +79,11 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     else
         nefile = joinpath(dirname(finput), input["init_files"]["ne_file"])
         qfile = joinpath(dirname(finput), input["init_files"]["q_file"])
+        methoddesc = get(input["init_files"], "method", "noiseless")
+        m = Dict("poisson" => PoissonInitSampling(maxc),
+                 "noiseless" => NoiselessInitSampling(maxc))[methoddesc]
         
-        init_particles = initfromfiles!(fields, nefile, qfile, maxc)
+        init_particles = initfromfiles!(m, fields, nefile, qfile)
     end
     population_index = Pair{Symbol, Any}[:electron => Population(maxp, init_particles, ecolls)]
         

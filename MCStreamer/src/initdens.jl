@@ -2,11 +2,19 @@
 Init densities from files.
 =#
 
+struct NoiselessInitSampling
+    p::Int
+end
+
+struct PoissonInitSampling
+    p::Int
+end
+
 """
     Load the corresponding files from `nefile` and `qfile` and sample electrons with them, using a maximum
     of particles per cell ncellmax.
 """
-function initfromfiles!(fields, nefile, qfile, ncellmax::Int)
+function initfromfiles!(method, fields, nefile, qfile)
     (;grid, qfixed) = fields
     (;M, N) = grid
 
@@ -26,21 +34,10 @@ function initfromfiles!(fields, nefile, qfile, ncellmax::Int)
 
     for j in 1:N, i in 1:M
         V = dV(grid, i)
-        n = ne[i, j] * V
+        nume, qf, w = nsample(method, ne[i, j], q[i, j], V)
+        qfixed[i, j, 1] = qf
         
-        if n < 1
-            nn = rand(Poisson(n))
-            w = 1.0
-        elseif n < ncellmax
-            nn = randround(n)
-            w = 1.0
-        else
-            nn = ncellmax
-            w = n / ncellmax
-        end
-        qfixed[i, j, 1] = q[i, j] / co.elementary_charge + w * nn / V
-        
-        for p in 1:nn
+        for p in 1:nume
             r = dr(grid) * rand() + grid.rf[i]
             z = dz(grid) * rand() + grid.zf[j]
             phi = 2π * rand()
@@ -55,6 +52,50 @@ function initfromfiles!(fields, nefile, qfile, ncellmax::Int)
     
     return s
 end
+
+
+"""
+    Sample a number of electrons and weight from electron and ion densities `ne` and `ni` in a
+    volume `V`.
+"""
+function nsample(method::NoiselessInitSampling, ne, q, V)
+    p = method.p
+    n = ne * V
+        
+    if n < 1
+        nume = rand(Poisson(n))
+        w = 1.0
+    elseif n < p
+        nume = randround(n)
+        w = 1.0
+    else
+        nume = p
+        w = n / p
+    end
+    qf = q / co.elementary_charge + w * nume / V
+
+        
+    return nume, qf, w
+end
+
+
+function nsample(method::PoissonInitSampling, ne, q, V)
+    p = method.p
+    
+    w = max(1, ne * V / p)
+    nume = rand(Poisson(ne * V / w))
+
+    ni = ne + q / co.elementary_charge
+    wi = max(1, abs(ni) * V / p)
+
+    numi = rand(Poisson(abs(ni) * V / wi))
+        
+    qf = sign(ni) * numi * wi / V
+        
+    return nume, qf, w
+end
+
+
 
 """
     Randomly rounds a number `x` to `floor(x)` or `ceil(x)` depending on the fractional part of
