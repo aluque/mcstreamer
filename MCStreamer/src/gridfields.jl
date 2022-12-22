@@ -13,6 +13,9 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # Charges associated with mobile particles.
     qpart::A1
 
+    # Pre-computed charge density.  Differs from q only without denoising
+    q0::A
+    
     # Charge density
     q::A
 
@@ -41,6 +44,7 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     function GridFields(grid::Grid{T}) where T
         qfixed = calloc_centers_threads(T, grid)
         qpart = calloc_centers_threads(T, grid)
+        q0 = calloc_centers(T, grid)
         q = calloc_centers(T, grid)
         ne = calloc_centers(T, grid, 2)
         dne = calloc_centers(T, grid, 2)
@@ -50,7 +54,8 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         ez = calloc_faces(T, grid)
         p = calloc_faces(Int, grid)
         
-        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q, ne, dne, u, er, ez, c, p)
+        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q0,
+                                                  q, ne, dne, u, er, ez, c, p)
     end
 end
 

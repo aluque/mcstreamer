@@ -2,8 +2,8 @@
   Plotting functions.
 =#
 
-function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
-              savedir=nothing, charge_scale=1, kw...)
+function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
+               savedir=nothing, charge_scale=1, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
@@ -25,74 +25,78 @@ function plot(fields; titleprefix="", rlim=nothing, zlim=nothing,
     (i1, i2) = indexlims(rlim, rc, M)
     (j1, j2) = indexlims(zlim, zc, N)
 
-    plt.figure("$titleprefix Charge density")
-    plt.clf()
-    q = @view(fields.q[i1:i2, j1:j2])
-    qmax, qmin = extrema(q)
-    absmax = max(abs(qmax), abs(qmin)) * charge_scale
-    
-    plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                   rf[i1:(i2 + 1)] ./ co.milli,
-                   q .* charge_scale;
-                   cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
-    cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")
 
+    function f_efield()
+        eabs = @. @views sqrt(0.25 * (fields.er[i1:i2, j1:j2] + fields.er[(i1 + 1):(i2 + 1), j1:j2])^2 +
+                              0.25 * (fields.ez[i1:i2, j1:j2] + fields.ez[i1:i2, (j1 + 1):(j2 + 1)])^2)
+
+
+        plt.figure("$titleprefix Electric field")
+        plt.clf()
+        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
+                       rf[i1:(i2 + 1)] ./ co.milli,
+                       eabs, cmap="gnuplot2"; kw...)
+        cbar = plt.colorbar(label="Electric field (V/m)")
+        
+    end
+
+    function f_edensity()
+        ne = @views -dropdims(sum(fields.qpart[i1:i2, j1:j2, begin:end], dims=3), dims=3)
+        lognorm = plt.matplotlib.colors.LogNorm(vmin=1e15, vmax=1e21)
+        plt.figure("$titleprefix Electron density")
+        plt.clf()
+        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
+                       rf[i1:(i2 + 1)] ./ co.milli,
+                       ne, cmap="gnuplot2", norm=lognorm; kw...)
+        cbar = plt.colorbar(label="Electron density (m\$^{-3}\$)")
+    end
+    
+    function f_charge()
+        q = @view(fields.q[i1:i2, j1:j2])
+        q .*= charge_scale
+        qmax, qmin = extrema(q)
+        absmax = max(abs(qmax), abs(qmin)) * charge_scale
+
+        plt.figure("$titleprefix Charge density")
+        plt.clf()
+        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
+                       rf[i1:(i2 + 1)] ./ co.milli, q,
+                       cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
+        cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
+    end
+
+    function f_charge0()
+        q = @view(fields.q0[i1:i2, j1:j2])
+        q .*= charge_scale
+        qmax, qmin = extrema(q)
+        absmax = max(abs(qmax), abs(qmin)) * charge_scale
+
+        plt.figure("$titleprefix Noisy charge density")
+        plt.clf()
+        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
+                       rf[i1:(i2 + 1)] ./ co.milli, q,
+                       cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
+        cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
+    end
+
+    
+    Dict(["edensity" => f_edensity,
+          "efield" => f_efield,
+          "charge" => f_charge,
+          "charge0" => f_charge0])[var]()
+    
     if rlim != nothing && zlim!= nothing
         setlims(rlim / co.milli, zlim / co.milli)
     end
-    
-    xylabel()
-    
-    if !isnothing(savedir)
-        fname = joinpath(savedir, "charge.png")
-        @info "Saving plot to" fname
-        plt.savefig(fname, dpi=600)
-    end
-    
-    plt.figure("$titleprefix Electric field")
-    plt.clf()
-    eabs = @. @views sqrt(0.25 * (fields.er[i1:i2, j1:j2] + fields.er[(i1 + 1):(i2 + 1), j1:j2])^2 +
-                          0.25 * (fields.ez[i1:i2, j1:j2] + fields.ez[i1:i2, (j1 + 1):(j2 + 1)])^2)
-
-    plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                   rf[i1:(i2 + 1)] ./ co.milli,
-                   eabs, cmap="gnuplot2"; kw...)
-    cbar = plt.colorbar(label="Electric field (V/m)")
-    if rlim != nothing && zlim!= nothing
-        setlims(rlim / co.milli, zlim / co.milli)
-    end
     xylabel()
 
     if !isnothing(savedir)
-        fname = joinpath(savedir, "efield.png")
+        fname = joinpath(savedir, "$(var).png")
         @info "Saving plot to" fname
         plt.savefig(fname, dpi=600)
-    end
-
-    plt.figure("$titleprefix Electron density")
-    plt.clf()
-    ne = @views -dropdims(sum(fields.qpart[i1:i2, j1:j2, begin:end], dims=3), dims=3)
-    lognorm = plt.matplotlib.colors.LogNorm(vmin=1e15, vmax=1e21)
-    plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                   rf[i1:(i2 + 1)] ./ co.milli,
-                   ne, cmap="gnuplot2", norm=lognorm; kw...)
-    cbar = plt.colorbar(label="Electron density (m\$^{-3}\$)")
-    if rlim != nothing && zlim!= nothing
-        setlims(rlim / co.milli, zlim / co.milli)
-    end
-    xylabel()
-    
-    
-    if !isnothing(savedir)
-        fname = joinpath(savedir, "edensity.png")
-        @info "Saving plot to" fname
-        plt.savefig(fname, dpi=600)
-    end
-    
-    if isnothing(savedir)
-        plt.show()
     end
 end
+
 
 function indexlims(lim::AbstractVector, x, n)
     i1 = searchsortedfirst(x, lim[1])
@@ -105,12 +109,20 @@ function indexlims(lim::Nothing, x, n)
 end
 
 
-function plot(fname::String; save=false, kw...)
+function plot(fname::String; save=false, vars=["edensity", "efield", "charge"], kw...)
+    fields = load(fname, "fields");
+    savedir = save ? splitext(fname)[1] : nothing
+    for var in vars
+        plot1(fields, var; savedir, kw...)
+    end
+end
+
+function plot1(fname::String, var::String; save=false, kw...)
     fields = load(fname, "fields");
 
     savedir = save ? splitext(fname)[1] : nothing
 
-    plot(fields; savedir, kw...)
+    plot1(fields, var; savedir, kw...)
 end
 
 function setlims(rlim, zlim)

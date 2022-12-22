@@ -6,30 +6,32 @@ const poisson_save_n = Ref(0)
 function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! remove outpath when finished debugging
     g = mg.g
-    @unpack grid, u, er, ez = fields
+    @unpack grid, u, er, ez, q0, q = fields
     @unpack M, N = grid
     
     fields.qpart .= 0
     
     density!(grid, fields.qpart, mpopl, Electron, -1.0)
 
-    # Summing along threads: TODO: pre-allocate
-    q = zeros(Float32, M, N)
-    
-    ci = CartesianIndices(axes(fields.q))
+    # Summing along threads
+    q0 .= 0
     
     for j in 1:N
         for i in 1:M
-            q[i, j]  = reduce(+, @view(fields.qfixed[i, j, :]))
-            q[i, j] += reduce(+, @view(fields.qpart[i, j, :]))
-            q[i, j] -= fields.ne[i, j]
-            q[i, j] *= co.elementary_charge
+            q0[i, j]  = reduce(+, @view(fields.qfixed[i, j, :]))
+            q0[i, j] += reduce(+, @view(fields.qpart[i, j, :]))
+            q0[i, j] -= fields.ne[i, j]
+            q0[i, j] *= co.elementary_charge
         end
     end
 
     
-    # De-noising
-    q1 = denoise(denoiser, q, t)
+    # De-noising.  We have to do this inefficient array allocations for compatibility
+    # with the tensorflow api.   
+    q1 = zeros(Float32, M, N)
+    q1 .= @view q0[1:M, 1:N]
+    
+    q[1:M, 1:N] .= denoise(denoiser, q1, t)
 
     # if (poisson_save_n[] % 50) == 0
     #     ofile = joinpath(outpath, "denoise_" * fmt("04d", poisson_save_n[]) * ".jld")
@@ -39,10 +41,6 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
     # end
     
     # poisson_save_n[] += 1
-
-
-    fields.q[1:M, 1:N] .= q1
-    
     
     Multigrid.solve(mg, parent(fields.u), parent(fields.q), ws)
 
