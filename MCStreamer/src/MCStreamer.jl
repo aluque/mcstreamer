@@ -1,5 +1,7 @@
 module MCStreamer
 
+
+using HDF5
 using StaticArrays 
 using Distributions: Poisson
 using StatsBase: sample, pweights
@@ -19,7 +21,6 @@ using Dates
 using LinearAlgebra
 using TOML
 using Polyester
-using HDF5
 
 using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron,
