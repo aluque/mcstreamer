@@ -35,10 +35,48 @@ function Population(max_particles::Int, inparticles::Vector{PS},
     return Population(Atomic{Int}(init_particles), particles, collisions)
 end
 
+struct ParticleIterator{P <: Population}
+    p::P
+end
+function Base.iterate(iter::ParticleIterator, state=1)
+    iter.p.n[] >= state ? (LazyRow(iter.p.particles, state), state + 1) : nothing
+end
+
+struct ActiveParticleIterator{P <: Population}
+    p::P
+end
+function Base.iterate(iter::ActiveParticleIterator, i=1)
+    while i <= iter.p.n[]
+        if iter.p.particles.active[i]
+            return (LazyRow(iter.p.particles, i), i + 1)
+        end
+    end
+    return nothing
+end
 
 particle_type(popl::Population{PS}) where {PS} = particle_type(PS)
+
+"Return number of particles (active or not)."
 nparticles(popl::Population) = popl.n[]
-eachparticle(popl::Population) = LazyRows(view(popl.particles, 1:popl.n[]))
+
+"Iterate over all particles."
+eachparticle(popl::Population) = ParticleIterator(popl)
+
+"Iterate over active particles."
+eachactive(popl::Population) = ActiveParticleIterator(popl)
+
+"""
+    Return number of active particles in the population.
+"""
+function nactives(popl::Population)
+    n = 0
+    for i in 1:popl.n[]
+        if LazyRow(popl.particles, i).active
+            n += 1
+        end
+    end
+    return n
+end
 
 
 """
