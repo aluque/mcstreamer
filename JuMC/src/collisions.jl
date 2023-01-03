@@ -146,7 +146,7 @@ end
 # happens.
 #
 abstract type AbstractCollisionTracker end
-struct VoidCollisionTracker end
+struct VoidCollisionTracker <: AbstractCollisionTracker end
 
 track(::AbstractCollisionTracker, outcome::AbstractOutcome) = nothing
 
