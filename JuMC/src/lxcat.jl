@@ -108,13 +108,14 @@ function load_lxcat(fnames, densities, energy)
     # Order collisions according to the integral (sum) over energies
     inteng = dropdims(sum(rate, dims=2), dims=2)
     perm = sortperm(inteng, rev=true)
+    origperm = invperm(perm)
     
     proc = tuple(proc[perm]...)
     rate = rate[perm, :]
-
+    
     @assert size(rate, 1) == length(proc)
     
-    (;proc, rate, maxrate)
+    (;proc, rate, maxrate, origperm)
 end
 
 """

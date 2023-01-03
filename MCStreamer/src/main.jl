@@ -48,7 +48,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     csfiles = map(fname -> joinpath(dirname(finput), fname),
                   input["cross_sections"])
 
-    proc, rate, maxrate = load_lxcat(csfiles, densities, energy)
+    (;proc, rate, maxrate) = load_lxcat(csfiles, densities, energy)
     ecolls = CollisionTable(proc, energy, rate, maxrate)
         
     Δt = input["dt"]
