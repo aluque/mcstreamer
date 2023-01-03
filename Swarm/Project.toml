@@ -1,0 +1,18 @@
+name = "Swarm"
+uuid = "a1e5340a-4007-4410-b833-919ceecb54ef"
+authors = ["Alejandro Luque <aluque@iaa.es>"]
+version = "0.1.0"
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Constants = "97b6df43-329e-46a4-b57f-f766ebb68870"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Formatting = "59287772-0a20-5a39-b81b-1366585eb4c0"
+JuMC = "f59b32b4-cbd0-4f47-a058-e7dcfb659c8d"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
