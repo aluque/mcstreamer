@@ -20,6 +20,8 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     MCStreamer.pretty_print(IOContext(io, :color => true), input)
     
     @info "Input read from $finput" * "\n" * String(take!(io))
+
+    nair::Float64 = get(input, nair, co.nair)
     
     L::Float64 = input["domain"]["L"]
     R::Float64 = input["domain"]["R"]
@@ -35,8 +37,8 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     grid = Grid(R, L, M, N)
     fields = GridFields(grid)
 
-    densities = Dict("N2" => co.nair * 0.79,
-                     "O2" => co.nair * 0.21)
+    densities = Dict("N2" => nair * 0.79,
+                     "O2" => nair * 0.21)
     
     # Create the energy grid in eV; all cross-sections are interpolated into
     # this grid
@@ -287,7 +289,9 @@ end
 """
 function getfield(input)
     units = get(input, "field_units", "Td")
-    scale = Dict("Td" => co.Td * co.nair,
+    nair::Float64 = get(input, nair, co.nair)
+
+    scale = Dict("Td" => co.Td * nair,
                  "kV/cm" => 1e5,
                  "MV/m" => 1e6,
                  "V/m" => 1.0,
