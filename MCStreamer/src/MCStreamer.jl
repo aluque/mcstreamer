@@ -22,7 +22,7 @@ using LinearAlgebra
 using TOML
 using Polyester
 
-using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome,
+using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome, ReplaceParticleOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron,
     Population, nextcoll, ElectronState, MultiPopulation,
     actives, weight, advance!, collisions!, AbstractCollisionTracker,

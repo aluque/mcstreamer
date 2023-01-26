@@ -187,6 +187,9 @@ JuMC.track(tracker::CollisionTracker, out::NewParticleOutcome) =
     track1(tracker.fields, out.state1.x, out.state1.w)
 JuMC.track(tracker::CollisionTracker, out::RemoveParticleOutcome) =
     track1(tracker.fields, out.state.x, -out.state.w)
-
+function JuMC.track(tracker::CollisionTracker,
+                    out::ReplaceParticleOutcome{PhotonState{T}, ElectronState{T}}) where {T}
+    track1(tracker.fields, out.state1.x, out.state1.w)
+end
 JuMC.track(::CollisionTracker, ::StateChangeOutcome) = nothing
 JuMC.track(::CollisionTracker, ::NullOutcome) = nothing
