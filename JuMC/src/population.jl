@@ -61,7 +61,7 @@ particle_type(popl::Population{PS}) where {PS} = particle_type(PS)
 nparticles(popl::Population) = popl.n[]
 
 "Iterate over all particles."
-eachparticle(popl::Population) = ParticleIterator(popl)
+eachparticle(popl::Population) = LazyRows(view(popl.particles, 1:popl.n[]))
 
 "Iterate over active particles."
 eachactive(popl::Population) = ActiveParticleIterator(popl)
