@@ -21,7 +21,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     @info "Input read from $finput" * "\n" * String(take!(io))
 
-    nair::Float64 = get(input, nair, co.nair)
+    nair::Float64 = get(input, "nair", co.nair)
     
     L::Float64 = input["domain"]["L"]
     R::Float64 = input["domain"]["R"]
@@ -84,8 +84,11 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         methoddesc = get(input["init_files"], "method", "noiseless")
         m = Dict("poisson" => PoissonInitSampling(maxc),
                  "noiseless" => NoiselessInitSampling(maxc))[methoddesc]
+        format = get(input["init_files"], "format", "am")
         
-        init_particles = initfromfiles!(m, fields, nefile, qfile)
+        loader = Dict("am" => AMLoader, "afivo" => AfivoLoader)[format](nefile, qfile)
+        
+        init_particles = initfromfiles!(m, fields, loader)
     end
     population_index = Pair{Symbol, Any}[:electron => Population(maxp, init_particles, ecolls)]
         
@@ -289,7 +292,7 @@ end
 """
 function getfield(input)
     units = get(input, "field_units", "Td")
-    nair::Float64 = get(input, nair, co.nair)
+    nair::Float64 = get(input, "nair", co.nair)
 
     scale = Dict("Td" => co.Td * nair,
                  "kV/cm" => 1e5,

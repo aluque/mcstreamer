@@ -10,13 +10,18 @@ struct PoissonInitSampling
     p::Int
 end
 
-"""
-    Load the corresponding files from `nefile` and `qfile` and sample electrons with them, using a maximum
-    of particles per cell ncellmax.
-"""
-function initfromfiles!(method, fields, nefile, qfile)
-    (;grid, qfixed) = fields
-    (;M, N) = grid
+struct AMLoader
+    nefile::String
+    qfile::String
+end
+
+struct AfivoLoader
+    nefile::String
+    qfile::String
+end
+
+function loadinit(l::AMLoader)
+    (;nefile, qfile) = l
 
     hne = h5open(nefile)
     hq = h5open(qfile)
@@ -25,9 +30,46 @@ function initfromfiles!(method, fields, nefile, qfile)
     q = Array(hq["group1/charge_density"])
     att = attrs(hq["group1"])
 
+    data_dr = att["x.delta"]
+    data_dz = att["y.delta"]
+
+    return (;ne, q, data_dr, data_dz)
+end
+
+
+function loadinit(l::AfivoLoader)
+    (;nefile, qfile) = l
+
+    hne = h5open(nefile)
+    hq = h5open(qfile)
+
+    ne = Array(hne["e"])
+    q = co.elementary_charge .* (Array(hq["M_plus"]) .- Array(hq["M_min"]) .- Array(hq["e"]))
+
+    @assert all(hne["r"] .== hq["r"])
+    @assert all(hne["z"] .== hq["z"])
+    
+    data_dr = diff(Array(hne["r"]))[1]
+    data_dz = diff(Array(hne["z"]))[1]
+
+    return (;ne, q, data_dr, data_dz)
+end
+
+
+
+"""
+    Load the corresponding files from `nefile` and `qfile` and sample electrons with them, using a maximum
+    of particles per cell ncellmax.
+"""
+function initfromfiles!(method, fields, loader)
+    (;grid, qfixed) = fields
+    (;M, N) = grid
+
+    (;ne, q, data_dr, data_dz) = loadinit(loader)
+    
     @assert size(ne) == (M, N) "Size $(size(ne)) != (M=$M, ,N=$N)"
-    @assert isapprox(att["x.delta"], dr(grid))
-    @assert isapprox(att["y.delta"], dz(grid))
+    @assert isapprox(data_dr, dr(grid)) 
+    @assert isapprox(data_dz, dz(grid))
     
     s = ElectronState{Float64}[]
     v0 = @SVector zeros(Float64, 3)
