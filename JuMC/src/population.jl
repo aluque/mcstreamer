@@ -50,6 +50,7 @@ function Base.iterate(iter::ActiveParticleIterator, i=1)
         if iter.p.particles.active[i]
             return (LazyRow(iter.p.particles, i), i + 1)
         end
+        i += 1
     end
     return nothing
 end
