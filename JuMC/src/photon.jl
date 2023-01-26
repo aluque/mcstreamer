@@ -46,7 +46,7 @@ function collide(c::PhotoIonization, p::PhotonState{T}, energy) where T
     # The electron starts with 0 velocity
     v  = zero(SVector{3, Float64})
 
-    pe = ElectronState{T}(p.x,  v, p.w, p.s, p.active)
+    pe = ElectronState{T}(p.x,  v, p.w, nextcoll(), p.active)
     ReplaceParticleOutcome(p, pe)
 end
 
