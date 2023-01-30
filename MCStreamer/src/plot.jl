@@ -3,7 +3,7 @@
 =#
 
 function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
-               savedir=nothing, charge_scale=1, kw...)
+               clim=nothing, savedir=nothing, charge_scale=1, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
@@ -33,16 +33,18 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
 
         plt.figure("$titleprefix Electric field")
         plt.clf()
+        (vmin, vmax) = _vlim((nothing, nothing), clim)
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
                        rf[i1:(i2 + 1)] ./ co.milli,
-                       eabs, cmap="gnuplot2"; kw...)
+                       eabs, cmap="gnuplot2"; vmin, vmax, kw...)
         cbar = plt.colorbar(label="Electric field (V/m)")
         
     end
 
     function f_edensity()
         ne = @views -dropdims(sum(fields.qpart[i1:i2, j1:j2, begin:end], dims=3), dims=3)
-        lognorm = plt.matplotlib.colors.LogNorm(vmin=1e15, vmax=1e21)
+        (vmin, vmax) = _vlim((1e15, 1e21), clim)
+        lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
         plt.figure("$titleprefix Electron density")
         plt.clf()
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
@@ -56,12 +58,13 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
-
+        (vmin, vmax) = _vlim((-absmax, absmax), clim)
+        
         plt.figure("$titleprefix Charge density")
         plt.clf()
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                       rf[i1:(i2 + 1)] ./ co.milli, q,
-                       cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
+                       rf[i1:(i2 + 1)] ./ co.milli, q;
+                       cmap="seismic", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
@@ -70,12 +73,13 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
+        (vmin, vmax) = _vlim((-absmax, absmax), clim)
 
         plt.figure("$titleprefix Noisy charge density")
         plt.clf()
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
                        rf[i1:(i2 + 1)] ./ co.milli, q,
-                       cmap="seismic", vmin=-absmax, vmax=absmax, kw...)
+                       cmap="seismic", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
@@ -134,5 +138,9 @@ setrlim(rlim::Nothing) = nothing
 setrlim(rlim::AbstractVector) = plt.ylim(rlim)
 setzlim(zlim::Nothing) = nothing
 setzlim(zlim::AbstractVector) = plt.xlim(zlim)
+
+_vlim(vlim1, vlim2::Nothing) = vlim1
+_vlim(vlim1, vlim2::AbstractVector) = vlim2
+_vlim(vlim1, vlim2::Tuple) = vlim2
 
 
