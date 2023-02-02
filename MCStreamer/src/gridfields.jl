@@ -39,7 +39,7 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
 
     # For Russian roulette; total weight of the discarded particles
     w::A
-    
+
     """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
         qfixed = calloc_centers_threads(T, grid)
@@ -49,13 +49,12 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         ne = calloc_centers(T, grid, 2)
         dne = calloc_centers(T, grid, 2)
         u = calloc_centers(T, grid)
-        c = calloc_centers(T, grid)
         er = calloc_faces(T, grid)
         ez = calloc_faces(T, grid)
-        p = calloc_faces(Int, grid)
-        
+        p = calloc_centers(Int, grid)
+        w = calloc_centers(T, grid)
         new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q0,
-                                                  q, ne, dne, u, er, ez, c, p)
+                                                  q, ne, dne, u, er, ez, p, w)
     end
 end
 
