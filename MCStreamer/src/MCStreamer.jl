@@ -24,7 +24,7 @@ using Polyester
 
 using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome, ReplaceParticleOutcome,
     NullOutcome, ParticleType, shuffle!, repack!, load_lxcat, CollisionTable, Electron, Photon,
-    Population, nextcoll, ElectronState, MultiPopulation,
+    Population, nextcoll, ElectronState, MultiPopulation, nparticles,
     actives, weight, advance!, collisions!, AbstractCollisionTracker,
     eachparticle, remove_particle!, add_particle!, ZhelezniakCollisions, PhotonState
 import JuMC

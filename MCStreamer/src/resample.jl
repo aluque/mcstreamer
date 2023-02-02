@@ -5,11 +5,15 @@
     particles cell-wise.
 """
 function resample!(popl, fields, nmax)
-    (;grid, p, w) = fields
+    (;grid, p, wmax, wtotal, wdis) = fields
 
-    w .= 0.0
+    wmax .= 0.0
+    wtotal .= 0.0
+    wdis .= 0.0
+    
     p .= 0
     
+    # First pass: compute p, wtotal, wmax for each cell
     for i in 1:popl.n[]
         k = LazyRow(popl.particles, i)
         k.active || continue
@@ -18,12 +22,11 @@ function resample!(popl, fields, nmax)
         checkbounds(Bool, p, I) || continue
 
         p[I] += 1
-        
-        if p[I] > nmax
-            w[I] += k.w
-            remove_particle!(popl, i)
-        end
+        wtotal[I] += k.w
+        wmax[I] = max(wmax[I], k.w)
     end
+
+    # Second pass: in cells with particle excess, remove particles
 
     for i in 1:popl.n[]
         k = LazyRow(popl.particles, i)
@@ -32,17 +35,42 @@ function resample!(popl, fields, nmax)
         I = cellindex(grid, k.x)
         checkbounds(Bool, p, I) || continue
 
-        if p[I] > nmax
-            # Russian roulette
-            wnew = k.w + w[I] / nmax
-            k.w = wnew
-        elseif p[I] < nmax && k.w > 2
-            # Splitting
-            wnew = round(k.w / 2)
-            index = add_particle!(popl, popl.particles[i])
-            popl.particles.w[index] = wnew
-            k.w = k.w - wnew
-            p[I] += 1
+        @inbounds begin
+            if p[I] > nmax
+                alpha = min(nmax, wtotal[I] / wmax[I])
+                if rand() > alpha * k.w
+                    # drop particle
+                    wdis[I] += k.w
+                    remove_particle!(popl, i)
+                end
+                # # Russian roulette
+                # wnew = k.w + w[I] / nmax
+                # k.w = wnew
+            elseif p[I] < nmax && k.w > 2
+                # Splitting
+                wnew = round(k.w / 2)
+                index = add_particle!(popl, popl.particles[i])
+                popl.particles.w[index] = wnew
+                k.w = k.w - wnew
+                
+                # We do not change inline the number of particles. Perhaps we end with more than
+                # nmax particles but they will be reaped in the nex iteration
+                # p[I] += 1
+            end
+        end
+    end
+    
+    # Final pass: reassign the weight of the removed particles
+    for i in 1:popl.n[]
+        k = LazyRow(popl.particles, i)
+        k.active || continue
+        I = cellindex(grid, k.x)
+        checkbounds(Bool, p, I) || continue
+        @inbounds begin 
+            if p[I] > nmax
+                @assert (wtotal[I] > wdis[I])
+                k.w *= wtotal[I] / (wtotal[I] - wdis[I])
+            end
         end
     end
 end

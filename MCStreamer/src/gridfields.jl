@@ -37,8 +37,14 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # For Russian roulette; counter of particles inside each cell.
     p::AI
 
+    # For Russian roulette: max. weight of particles inside a cell
+    wmax::A
+
+    # For Russian roulette: total weight inside a cell
+    wtotal::A
+    
     # For Russian roulette; total weight of the discarded particles
-    w::A
+    wdis::A
 
     """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
@@ -52,9 +58,11 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         er = calloc_faces(T, grid)
         ez = calloc_faces(T, grid)
         p = calloc_centers(Int, grid)
-        w = calloc_centers(T, grid)
+        wmax = calloc_centers(T, grid)
+        wtotal = calloc_centers(T, grid)
+        wdis = calloc_centers(T, grid)
         new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q0,
-                                                  q, ne, dne, u, er, ez, p, w)
+                                                  q, ne, dne, u, er, ez, p, wmax, wtotal, wdis)
     end
 end
 

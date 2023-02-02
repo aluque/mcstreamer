@@ -234,6 +234,9 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
+            photon_superparticles = nparticles(photons) > 0 ? actives(photons) : 0
+            physical_photons = nparticles(photons) > 0 ? weight(photons) : 0.0
+            
             @info("$(j * Δt_output * 1e9) ns [$(i) steps]",
                   active_superparticles, physical_particles,
                   photon_superparticles, physical_photons)
@@ -248,10 +251,7 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             max_energy = JuMC.maxenergy(popl)
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
-            photon_superparticles = actives(photons)
-            physical_photons = weight(photons)
             @info("t = $t", active_superparticles, physical_particles,
-                  photon_superparticles, physical_photons,
                   mean_energy / co.eV,
                   max_energy / co.eV)
         end
