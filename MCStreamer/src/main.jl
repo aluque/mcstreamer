@@ -50,7 +50,16 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     csfiles = map(fname -> joinpath(dirname(finput), fname),
                   input["cross_sections"])
 
-    (;proc, rate, maxrate) = load_lxcat(csfiles, densities, energy)
+    if "photoionization" in keys(input)
+        photon_weight::Float64 = get(input["photoionization"], "photon_weight", 1.0)
+        photon_multiplier::Float64 = get(input["photoionization"], "photon_multiplier", 1.0)
+    else
+        photon_weight = 1.0
+        photon_multiplier = 1.0
+    end        
+    
+    (;proc, rate, maxrate) = load_lxcat(csfiles, densities, energy;
+                                        photon_weight, photon_multiplier)
     ecolls = CollisionTable(proc, energy, rate, maxrate)
         
     Δt = input["dt"]
@@ -194,6 +203,8 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                 fields, mg, ws, denoiser, hasfluid; outpath="")
 
     popl = get(mpopl, Electron)
+    photons = get(mpopl, Photon)
+    
     ecolls = popl.collisions
     tracker = CollisionTracker(fields)
 
@@ -223,7 +234,10 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
-            @info "$(j * Δt_output * 1e9) ns"  active_superparticles physical_particles
+            @info("$(j * Δt_output * 1e9) ns [$(i) steps]",
+                  active_superparticles, physical_particles,
+                  photon_superparticles, physical_photons)
+            
             @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_resample
         end
 
@@ -234,7 +248,10 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             max_energy = JuMC.maxenergy(popl)
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
+            photon_superparticles = actives(photons)
+            physical_photons = weight(photons)
             @info("t = $t", active_superparticles, physical_particles,
+                  photon_superparticles, physical_photons,
                   mean_energy / co.eV,
                   max_energy / co.eV)
         end
@@ -242,6 +259,8 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         atstep(resample, t) do _
             elapsed_resample += @elapsed begin
                 pre_total_weight = weight(popl)
+                repack!(photons)
+
                 repack!(popl)
                 shuffle!(popl)
                 resample!(popl, fields, maxc)

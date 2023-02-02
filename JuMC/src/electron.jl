@@ -89,14 +89,18 @@ struct PhotoEmission{T} <: CollisionProcess;
     log_νmin::T
     log_νmax::T
 
-    # Weight scale is used to produce a smoother distribution of photons.
+    # `photon_multiplier` is used to produce a smoother distribution of photons.
     # The cross-section is multiplied by this factor and the weight is divided
     # by it.
-    weight_scale::T
+    photon_multiplier::T
+
+    # This is to reduce noise even beyond real physical noise, which can be
+    # useful for comparing with fluid simulations.
+    photon_weight::T
     
-    function PhotoEmission(νmin, νmax, weight_scale)
+    function PhotoEmission(νmin, νmax, weight_scale, photon_weight)
         lmin, lmax = promote(log(νmin), log(νmax))
-        new{typeof(lmin)}(lmin, lmax, weight_scale)
+        new{typeof(lmin)}(lmin, lmax, weight_scale, photon_weight)
     end
 end
 
@@ -135,6 +139,6 @@ function collide(c::Elastic, p::ElectronState{T}, energy) where T
 end
 
 function collide(c::PhotoEmission, p::ElectronState{T}, energy) where T
-    nphot = rand(Poisson(p.w))
+    nphot = rand(Poisson(p.w / c.photon_multiplier / c.photon_weight))
     MultiplePhotonOutcome(nphot, p, c)
 end

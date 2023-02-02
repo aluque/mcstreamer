@@ -129,14 +129,14 @@ end
 
     p = outcome.state1
     
-    (;log_νmin, log_νmax, weight_scale) = outcome.photoemit
+    (;log_νmin, log_νmax, photon_weight) = outcome.photoemit
     photons = get(mpopl, Photon)
-
+    
     for i in 1:outcome.nphot
         v = randsphere() .* co.c
         ν = exp(log_νmin + (log_νmax - log_νmin) * rand())
-        p2 = PhotonState{T}(p.x, v, ν, 1.0, nextcoll(), p.active)
-        add_particle!(photons, p2)    
+        p2 = PhotonState{T}(p.x, v, ν, photon_weight, nextcoll(), p.active)
+        add_particle!(photons, p2)
     end
 end
 
