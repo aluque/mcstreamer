@@ -53,9 +53,7 @@ function resample!(popl, fields, nmax)
                 popl.particles.w[index] = wnew
                 k.w = k.w - wnew
                 
-                # We do not change inline the number of particles. Perhaps we end with more than
-                # nmax particles but they will be reaped in the nex iteration
-                # p[I] += 1
+                p[I] += 1
             end
         end
     end
