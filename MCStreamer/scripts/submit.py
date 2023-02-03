@@ -4,6 +4,7 @@
 import sys
 import os
 from subprocess import call
+import shutil
 
 DEF_QUEUE = 'generic'
 CODE_ROOT = os.path.split(os.path.abspath(__file__))[0]
@@ -110,7 +111,15 @@ def main():
     _class = {"slurm": Slurm,
              "qsub": Qsub}[args.system]
 
-    
+    # Test if an .out file exists and in that case preserve it
+    fout = os.path.splitext(args.ifile)[0] + ".out"
+    if os.path.exists(fout):
+        for i in range(1000):
+            nfout = fout + (".%03d" % i)
+            if not os.path.exists(nfout):
+                shutil.move(fout, nfout)
+                break
+            
     submission = _class(args)
     submission.submit()
     
