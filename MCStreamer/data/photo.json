@@ -111,7 +111,6 @@
         "target": "N2",
 	"absorber": "O2",
 	"rescale": 0.00228,
-	"weight_scale_inactive": 100.0,
 	"chi_min": 1.09e-23,
 	"chi_max": 6.21e-21,
 	"comment": "chi_max/min are computed from Zhelezniak for T=300K. AL."
