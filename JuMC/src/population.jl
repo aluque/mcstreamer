@@ -55,6 +55,8 @@ function Base.iterate(iter::ActiveParticleIterator, i=1)
     return nothing
 end
 
+isactive(popl::Population, i::Int) = popl.particles.active[i]
+
 particle_type(popl::Population{PS}) where {PS} = particle_type(PS)
 
 "Return number of particles (active or not)."
@@ -180,22 +182,25 @@ at the initial positions in the list.
 
 """
 function repack!(popl::Population)
-    # new positions
-    k = zeros(Int, nparticles(popl))
-    c = 0
-    for (i, p) in enumerate(eachparticle(popl))
-        if p.active
-            c += 1
-            k[c] = i
+    # last active
+    l = nparticles(popl)
+    while !isactive(popl, l)
+        l -= 1
+    end
+
+    i = 1
+    while i <= l
+        if !isactive(popl, i)
+            popl.particles[i] = popl.particles[l]
+            l -= 1
+            while !isactive(popl, l)
+                l -= 1
+            end
         end
+        i += 1
     end
 
-    for i in 1:c
-        popl.particles[i] = popl.particles[k[i]]
-    end
-
-    #@info "\u1b[0KParticles repackaged (took $(1000 * (time() - start)) ms)"
-    popl.n[] = c
+    popl.n[] = l
 end
 
 
