@@ -228,9 +228,10 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
         atstep(output, t) do j
             # Use true here to enable compression. Add electron=popl to save all
             # electron states.
-
-            jldsave(joinpath(outpath, fmt("04d", j) * ".jld"), false;
-                    iotype=IOStream, fields);
+            fsave = joinpath(outpath, fmt("04d", j) * ".jld")
+            jldsave(fsave, false; iotype=IOStream, fields);
+            @info "Saved file" fsave
+            flush(stdout)
             
             active_superparticles = actives(popl)
             physical_particles = weight(popl)
@@ -242,10 +243,11 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                   photon_superparticles, physical_photons)
             
             @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_resample
+            flush(stdout)
         end
 
         elapsed_advance += @elapsed advance!(mpopl, efield, Δt, tracker)
-
+        
         if iszero(i % 10000)
             mean_energy = JuMC.meanenergy(popl)
             max_energy = JuMC.maxenergy(popl)
@@ -254,11 +256,15 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             @info("t = $t", active_superparticles, physical_particles,
                   mean_energy / co.eV,
                   max_energy / co.eV)
+            flush(stdout)
         end
         
-        atstep(resample, t) do _
+        atstep(resample, t) do j
             elapsed_resample += @elapsed begin
                 pre_total_weight = weight(popl)
+                @info("resample: $(j * Δt_resample * 1e9) ns [$(i) steps]",
+                      nparticles(photons))
+                flush(stdout)
                 repack!(photons)
 
                 repack!(popl)
@@ -267,6 +273,7 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                 post_total_weight = weight(popl)
                 @assert(isapprox(pre_total_weight, post_total_weight, rtol=1e-5),
                         "repackaging is not conserving the number of particles")
+                
                 
             end
         end
@@ -282,7 +289,7 @@ end
 
 
 """
-    Sample from a spatial distribution consisting in a vertical segment with a gaussian blur.
+Sample from a spatial distribution consisting in a vertical segment with a gaussian blur.
 """
 function sampseg(z0, z1, w)
     @assert z1 >= z0
