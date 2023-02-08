@@ -37,7 +37,7 @@ function resample!(popl, fields, nmax)
 
         @inbounds begin
             if p[I] > nmax
-                alpha = min(nmax, wtotal[I] / wmax[I])
+                alpha = min(nmax / wtotal[I], 1 / wmax[I])
                 if rand() > alpha * k.w
                     # drop particle
                     wdis[I] += k.w
