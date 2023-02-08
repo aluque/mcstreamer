@@ -115,8 +115,6 @@
 	"chi_min": 1.09e-23,
 	"chi_max": 6.21e-21,
 	"comment": "chi_max/min are computed from Zhelezniak for T=300K. AL."
-<<<<<<< Updated upstream
-=======
     },
     {
         "comment": "UPDATED: 2010-03-02 08:39:45",
@@ -233,6 +231,5 @@
 	"chi_min": 1.09e-23,
 	"chi_max": 6.21e-21,
 	"comment": "chi_max/min are computed from Zhelezniak for T=300K. AL.  Note that this process does not follow the physics of the process but it's required because the Zhelezniak model is measured relative to the total ionization."
->>>>>>> Stashed changes
     }
 ]
