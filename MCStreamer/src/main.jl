@@ -243,7 +243,6 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                   photon_superparticles, physical_photons)
             
             @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_resample
-            flush(stdout)
         end
 
         elapsed_advance += @elapsed advance!(mpopl, efield, Δt, tracker)
@@ -256,25 +255,25 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
             @info("t = $t", active_superparticles, physical_particles,
                   mean_energy / co.eV,
                   max_energy / co.eV)
-            flush(stdout)
         end
         
         atstep(resample, t) do j
             elapsed_resample += @elapsed begin
+                repack!(photons)
+
                 pre_total_weight = weight(popl)
                 @info("resample: $(j * Δt_resample * 1e9) ns [$(i) steps]",
                       nparticles(photons))
-                flush(stdout)
-                repack!(photons)
-
                 repack!(popl)
-                shuffle!(popl)
-                resample!(popl, fields, maxc)
                 post_total_weight = weight(popl)
                 @assert(isapprox(pre_total_weight, post_total_weight, rtol=1e-5),
                         "repackaging is not conserving the number of particles")
-                
-                
+
+                shuffle!(popl)
+                resample!(popl, fields, maxc)
+                post_total_weight_2 = weight(popl)
+                @assert(isapprox(post_total_weight, post_total_weight_2, rtol=1e-5),
+                        "resampling is not conserving the number of particles")
             end
         end
 
