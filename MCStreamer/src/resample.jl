@@ -4,15 +4,14 @@
     The weights of the removed particles are distributed among all remaining 
     particles cell-wise.
 """
-function resample!(popl, fields, nmax)
-    (;grid, p, wmax, wtotal, wdis) = fields
-
-    wmax .= 0.0
+function resample!(popl, fields, ntarget, nmax)
+    (;grid, x, p, pk, wtotal, wcum) = fields
+    wcum .= 0.0
     wtotal .= 0.0
-    wdis .= 0.0
+    x .= 0
     
     p .= 0
-    
+    pk .= 0
     # First pass: compute p, wtotal, wmax for each cell
     for i in 1:popl.n[]
         k = LazyRow(popl.particles, i)
@@ -23,11 +22,13 @@ function resample!(popl, fields, nmax)
 
         p[I] += 1
         wtotal[I] += k.w
-        wmax[I] = max(wmax[I], k.w)
+
+        if p[I] == nmax
+            x[I] = samplemin(ntarget)
+        end
     end
 
     # Second pass: in cells with particle excess, remove particles
-
     for i in 1:popl.n[]
         k = LazyRow(popl.particles, i)
         k.active || continue
@@ -35,21 +36,35 @@ function resample!(popl, fields, nmax)
         I = cellindex(grid, k.x)
         checkbounds(Bool, p, I) || continue
 
+        #= 
+        A short description of the Russian roulette resampling that we do here:
+        When the number of particles in a cell exceeds nmax we resample them into ntarget 
+        particles of equal weight. What we do is equivalent to the following: arrange the 
+        weights sequentially and normalize them such that their sum adds to 1. Then draw
+        ntarget samples from a uniform distribution in [0, 1].  The chosen particles are those
+        where the samples fall and a particle may be chosen more than once. In this manner the
+        number of times that a particle is selected is proportional to its weight.
+        For performance reasons we do not draw all the samples at once but consecutively;
+        this is achieved with `samplemin(m)`, which samples from the distribution of the minimum
+        of `m` uniformly-distributed, independent samples.
+        =#
         @inbounds begin
-            if p[I] > nmax
-                alpha = min(nmax / wtotal[I], 1 / wmax[I])
-                if rand() > alpha * k.w
-                    # drop particle
-                    wdis[I] += k.w
-                    remove_particle!(popl, i)
+            if p[I] > nmax 
+                while (wtotal[I] * x[I] < wcum[I] + k.w) && pk[I] < ntarget
+                    pk[I] += 1
+                    index = add_particle!(popl, popl.particles[i])
+                    popl.particles.w[index] = wtotal[I] / ntarget
+                    if pk[I] < ntarget
+                        x[I] += samplemin(ntarget - pk[I]) * (1 - x[I])
+                    end
                 end
-                # # Russian roulette
-                # wnew = k.w + w[I] / nmax
-                # k.w = wnew
-            elseif p[I] < nmax && k.w > 2
+                wcum[I] += k.w
+                remove_particle!(popl, i)
+                
+            elseif p[I] < ntarget && k.w > 2
                 # Splitting
                 wnew = round(k.w / 2)
-                index = add_particle!(popl, popl.particles[i])
+                    index = add_particle!(popl, popl.particles[i])
                 popl.particles.w[index] = wnew
                 k.w = k.w - wnew
                 
@@ -57,21 +72,13 @@ function resample!(popl, fields, nmax)
             end
         end
     end
-    
-    # Final pass: reassign the weight of the removed particles
-    for i in 1:popl.n[]
-        k = LazyRow(popl.particles, i)
-        k.active || continue
-        I = cellindex(grid, k.x)
-        checkbounds(Bool, p, I) || continue
-        @inbounds begin 
-            if p[I] > nmax
-                @assert (wtotal[I] > wdis[I])
-                k.w *= wtotal[I] / (wtotal[I] - wdis[I])
-            end
-        end
-    end
 end
+
+"""
+Sample from the probability distribution of the minimum of `m` draws from the uniform
+distribution in (0, 1).
+"""
+samplemin(m) = 1 - (1 - rand())^(1 / m)
 
 
 """ 

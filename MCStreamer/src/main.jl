@@ -29,7 +29,8 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     M::Int = input["domain"]["M"]
     N::Int = input["domain"]["N"]
     
-    maxc::Int = input["maxc"]
+    nmax::Int = input["nmax"]
+    ntarget::Int = input["ntarget"]
     maxp::Int = input["maxp"]
 
     n::Int = input["n"]
@@ -91,8 +92,8 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         nefile = joinpath(dirname(finput), input["init_files"]["ne_file"])
         qfile = joinpath(dirname(finput), input["init_files"]["q_file"])
         methoddesc = get(input["init_files"], "method", "noiseless")
-        m = Dict("poisson" => PoissonInitSampling(maxc),
-                 "noiseless" => NoiselessInitSampling(maxc))[methoddesc]
+        m = Dict("poisson" => PoissonInitSampling(ntarget),
+                 "noiseless" => NoiselessInitSampling(ntarget))[methoddesc]
         format = get(input["init_files"], "format", "am")
         
         loader = Dict("am" => AMLoader, "afivo" => AfivoLoader)[format](nefile, qfile)
@@ -170,7 +171,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     end
 
     if run
-        nsteps(mpopl, Int(fld(tmax, Δt)), maxc, efield, eb, Δt,
+        nsteps(mpopl, Int(fld(tmax, Δt)), ntarget, nmax, efield, eb, Δt,
                Δt_poisson, Δt_output, Δt_resample,
                fields, mg, ws, denoiser, hasfluid; outpath)
     end
@@ -188,8 +189,8 @@ end
     Parameters:
     * `mpopl` a (multi-)particle population.
     * `n`: number of steps.
-    * `maxc`: Max. particles per cell.
-    * `efield`: Electric field interpolator.    
+    * `ntarget`: Target number of electrons per cell
+    * `nmax`: Max. number of electrons per cell
     * `eb`: Background electric field.
     * `Δt`: Time-step at which the particles are updated.
     * `Δt_poisson`, `Δt_output`, `Δt_resample`: Time steps for updatting
@@ -199,7 +200,7 @@ end
     * `ws`: Working space for the MG solver.
     * `denoiser`: a Denoiser
 """
-function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
+function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_output, Δt_resample,
                 fields, mg, ws, denoiser, hasfluid; outpath="")
 
     popl = get(mpopl, Electron)
@@ -270,7 +271,7 @@ function nsteps(mpopl, n, maxc, efield, eb, Δt, Δt_poisson, Δt_output, Δt_re
                         "repackaging is not conserving the number of particles")
 
                 shuffle!(popl)
-                resample!(popl, fields, maxc)
+                resample!(popl, fields, ntarget, nmax)
                 post_total_weight_2 = weight(popl)
                 @assert(isapprox(post_total_weight, post_total_weight_2, rtol=1e-5),
                         "resampling is not conserving the number of particles")
