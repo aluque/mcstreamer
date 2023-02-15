@@ -42,8 +42,8 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
     
     # poisson_save_n[] += 1
     
-    Multigrid.solve(mg, parent(fields.u), parent(fields.q), ws)
-
+    solve_freebc!(parent(fields.u), parent(fields.q), grid, mg, ws)
+    
     Threads.@threads for i in 1:(M + 1)
         for j in 1:(N + 1)
             er[i, j] = (u[i - 1, j] - u[i, j]) / dr(grid)

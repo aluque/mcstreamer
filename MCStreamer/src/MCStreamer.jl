@@ -10,6 +10,8 @@ using UnPack
 using Accessors
 using StructArrays
 using Multigrid
+using FFTW
+using SpecialFunctions
 using OffsetArrays
 import PyPlot as plt
 using LaTeXStrings

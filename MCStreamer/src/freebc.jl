@@ -32,5 +32,5 @@ function solve_freebc!(u, b, grid, mg, ws, u1=u)
 
     # The solve method returns u with homogeneous b.c.  We should impose here
     # the correct ones or we get high electric fields at the boundary.
-    u[end - G + 1, :] .+= 2 .* dbcond
+    u[end - G + 1, :] .+= 2 .* bcond
 end

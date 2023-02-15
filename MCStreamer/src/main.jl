@@ -122,7 +122,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     # Poisson
     bc = ((LeftBnd(), Dirichlet()),
           (RightBnd(), Dirichlet()),
-          (TopBnd(), Neumann()),
+          (TopBnd(), Dirichlet()),
           (BottomBnd(), Neumann()))
 
     poisson_levels = get(input, "poisson_levels", 9)
