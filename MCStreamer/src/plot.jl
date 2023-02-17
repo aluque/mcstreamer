@@ -42,7 +42,7 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     end
 
     function f_edensity()
-        ne = @views -dropdims(sum(fields.qpart[i1:i2, j1:j2, begin:end], dims=3), dims=3)
+        ne = @views -fields.qpart[i1:i2, j1:j2, begin:end]
         (vmin, vmax) = _vlim((1e15, 1e21), clim)
         lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
         plt.figure("$titleprefix Electron density")

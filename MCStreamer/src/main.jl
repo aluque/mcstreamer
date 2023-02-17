@@ -230,8 +230,7 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
             # Use true here to enable compression. Add electron=popl to save all
             # electron states.
             fsave = joinpath(outpath, fmt("04d", j) * ".jld")
-            jldsave(fsave, false; iotype=IOStream, fields);
-            @info "Saved file" fsave
+            savefields(fsave, fields)
             flush(stdout)
             
             active_superparticles = actives(popl)
