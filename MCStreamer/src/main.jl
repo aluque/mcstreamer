@@ -97,8 +97,11 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         format = get(input["init_files"], "format", "am")
         
         loader = Dict("am" => AMLoader, "afivo" => AfivoLoader)[format](nefile, qfile)
-        
-        init_particles = initfromfiles!(m, fields, loader)
+        fluid_threshold = get(input["init_files"], "fluid_threshold", Inf)
+        init_particles = initfromfiles!(m, fields, loader; fluid_threshold)
+        if isfinite(fluid_threshold)
+            hasfluid = true
+        end
     end
     population_index = Pair{Symbol, Any}[:electron => Population(maxp, init_particles, ecolls)]
         

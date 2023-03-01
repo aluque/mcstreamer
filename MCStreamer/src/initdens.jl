@@ -61,7 +61,7 @@ end
     Load the corresponding files from `nefile` and `qfile` and sample electrons with them, using a maximum
     of particles per cell ncellmax.
 """
-function initfromfiles!(method, fields, loader)
+function initfromfiles!(method, fields, loader; fluid_threshold=Inf)
     (;grid, qfixed) = fields
     (;M, N) = grid
 
@@ -76,6 +76,12 @@ function initfromfiles!(method, fields, loader)
 
     for j in 1:N, i in 1:M
         V = dV(grid, i)
+        if ne[i, j] > fluid_threshold
+            fields.ne[i, j] = ne[i, j]
+            fields.qfixed[i, j, 1] = q[i, j] / co.elementary_charge + ne[i, j]
+            continue
+        end
+
         nume, qf, w = nsample(method, ne[i, j], q[i, j], V)
         qfixed[i, j, 1] = qf
         
