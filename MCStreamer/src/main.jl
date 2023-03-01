@@ -71,7 +71,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     # For debug: limit tmax by hand
     tmax = isnothing(tmax) ? input["tmax"] : tmax
 
-    eb::Float64 = getfield(input)
+    eb::Float64 = geteb(input)
     
     T = Float64
     
@@ -316,7 +316,7 @@ end
 """
     Read the electric field from input, allowing for units to be specified.
 """
-function getfield(input)
+function geteb(input)
     units = get(input, "field_units", "Td")
     nair::Float64 = get(input, "nair", co.nair)
 

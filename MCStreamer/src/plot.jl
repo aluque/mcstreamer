@@ -3,19 +3,19 @@
 =#
 
 function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
-               clim=nothing, savedir=nothing, charge_scale=1, kw...)
+               clim=nothing, savedir=nothing, charge_scale=1, grid=fields.grid, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
     end
 
-    M = fields.grid.M
-    N = fields.grid.N
+    M = grid.M
+    N = grid.N
     # qfixed_t = dropdims(sum(@view(fields.qfixed[1:M, 1:N, :]), dims=3), dims=3)
     # qpart_t = dropdims(sum(@view(fields.qpart[1:M, 1:N, :]), dims=3), dims=3)
 
     # q = qfixed_t .- qpart_t
-    @unpack rf, zf, rc, zc = fields.grid
+    @unpack rf, zf, rc, zc = grid
     
     function xylabel()
         plt.xlabel("z (mm)")
@@ -42,7 +42,7 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     end
 
     function f_edensity()
-        ne = @views -fields.qpart[i1:i2, j1:j2, begin:end]
+        ne = @views -fields.qpart[i1:i2, j1:j2]
         (vmin, vmax) = _vlim((1e15, 1e21), clim)
         lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
         plt.figure("$titleprefix Electron density")
