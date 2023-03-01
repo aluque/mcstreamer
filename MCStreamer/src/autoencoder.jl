@@ -17,12 +17,14 @@ struct Denoiser{T}
     nn_range::NTuple{2, T}
     q_range::NTuple{2, T}
 
+    rscale::Bool
+    
     # The denoising will be active only after this time
     activ_time::T
 end
 
 
-Denoiser(model, nn_range, q_range) = Denoiser(model, nn_range, q_range, 0)
+Denoiser(model, nn_range, q_range, rscale) = Denoiser(model, nn_range, q_range, rscale, 0)
 
 """ 
     Denoiser(model_name::String, args...)
@@ -46,11 +48,13 @@ function denoise(d::Denoiser{T}, q) where T
     q1 = reshape(q, (1, size(q)..., 1))
     
     normq = rescale.(q1, Ref(d.q_range), Ref(d.nn_range))
-
+    d.rscale && addrscale(normq)
+    
     pypred = pycall(d.model.predict, PyArray, PyReverseDims(normq))
 
     # move to julia Array (with copy)
     pred = copy((@view pypred[1, :, :, 1])')
+    d.rscale && addrscale(pred)
 
     return pred
 end
@@ -60,6 +64,22 @@ function denoise(d::Denoiser, q, t)
         return denoise(d, q)
     else
         return q
+    end
+end
+
+function addrscale(q)
+    for j in size(q, 3)
+        for i in size(q, 2)
+            q[1, i, j, 1] *= (i - 0.5)
+        end
+    end
+end
+
+function rmrscale(q)
+    for j in size(q, 3)
+        for i in size(q, 2)
+            q[i, j] /= (i - 0.5)
+        end
     end
 end
 
