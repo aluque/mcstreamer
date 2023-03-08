@@ -251,15 +251,18 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
 
         elapsed_advance += @elapsed advance!(mpopl, efield, Δt, tracker)
         
-        if iszero(i % 10000)
-            mean_energy = JuMC.meanenergy(popl)
-            max_energy = JuMC.maxenergy(popl)
-            active_superparticles = actives(popl)
-            physical_particles = weight(popl)
-            @info("t = $t", active_superparticles, physical_particles,
-                  mean_energy / co.eV,
-                  max_energy / co.eV)
-        end
+        mean_energy = JuMC.meanenergy(popl)
+        max_energy = JuMC.maxenergy(popl)
+        active_superelectrons = actives(popl)
+        physical_electrons = weight(popl)
+        active_superphotons = actives(photons)        
+        physical_photons = active_superphotons == 0 ? zero(physical_electrons) : weight(photons)
+        
+        @info("t = $t",
+              active_superelectrons, physical_electrons,
+              active_superphotons, physical_photons,
+              mean_energy / co.eV, max_energy / co.eV)
+        
         
         atstep(resample, t) do j
             elapsed_resample += @elapsed begin
