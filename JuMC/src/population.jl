@@ -184,6 +184,8 @@ at the initial positions in the list.
 function repack!(popl::Population)
     # last active
     l = nparticles(popl)
+
+    l == 0 && return
     while !isactive(popl, l)
         l -= 1
     end
@@ -201,6 +203,8 @@ function repack!(popl::Population)
     end
 
     popl.n[] = l
+
+    return
 end
 
 
