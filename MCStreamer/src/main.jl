@@ -226,8 +226,10 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
         t = (i - 1) * Δt
         
         atstep(poisson, t) do _
-            elapsed_poisson += @elapsed poisson!(fields, mpopl, eb, mg, ws,
+            elapsed_poisson1 = @elapsed poisson!(fields, mpopl, eb, mg, ws,
                                                  denoiser, t, outpath)
+            elapsed_poisson += elapsed_poisson1
+            @info "Poisson equation solved in (seconds)" elapsed_poisson1
         end
         
         atstep(output, t) do j
@@ -249,8 +251,11 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
             @info "Elapsed times" elapsed_poisson elapsed_advance elapsed_resample
         end
 
-        elapsed_advance += @elapsed advance!(mpopl, efield, Δt, tracker)
+        elapsed_advance1 = @elapsed advance!(mpopl, efield, Δt, tracker)
+        elapsed_advance += elapsed_advance1
+        @info "Particles advanced in (seconds)" elapsed_advance1
         
+        @info "Computing diagnostics..."
         mean_energy = JuMC.meanenergy(popl)
         max_energy = JuMC.maxenergy(popl)
         active_superelectrons = actives(popl)
@@ -266,8 +271,10 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
         
         atstep(resample, t) do j
             elapsed_resample += @elapsed begin
-                repack!(photons)
-
+                
+                elapsed_repack = @elapsed repack!(photons)
+                @info "repack! photons finalized in (seconds)" elapsed_repack
+                
                 pre_total_weight = weight(popl)
                 @info("resample: $(j * Δt_resample * 1e9) ns [$(i) steps]",
                       nparticles(photons))
@@ -276,8 +283,12 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
                 @assert(isapprox(pre_total_weight, post_total_weight, rtol=1e-5),
                         "repackaging is not conserving the number of particles")
 
-                shuffle!(popl)
-                resample!(popl, fields, ntarget, nmax)
+                elapsed_shuffle = @elapsed shuffle!(popl)
+                @info "shuffle! electrons finalized in (seconds)" elapsed_shuffle
+
+                elapsed_resample = @elapsed resample!(popl, fields, ntarget, nmax)
+                @info "resample! electrons finalized in (seconds)" elapsed_resample
+
                 post_total_weight_2 = weight(popl)
                 @assert(isapprox(post_total_weight, post_total_weight_2, rtol=1e-5),
                         "resampling is not conserving the number of particles")
