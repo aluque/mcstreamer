@@ -76,6 +76,7 @@ dz(grid::Grid) = step(grid.zc)
 dV(grid::Grid, i) = 2π * grid.rc[i] * dr(grid) * dz(grid)
 rcyl(x) = sqrt(x[1]^2 + x[2]^2)
 
+Base.length(grid::Grid) = M * N
 
 """
     Index (CartesianIndex) of location `r` inside `grid`.
