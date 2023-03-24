@@ -33,7 +33,8 @@ Init a Denoiser struct wreading a saved keras model called `model_name`.
 """
 function Denoiser(model_name::String, args...)
     model = models.load_model(model_name;
-                              custom_objects=Dict("custom_loss_4" => x -> nothing))
+                              custom_objects=Dict("custom_loss_4" => x -> nothing,
+                                                  "cc_loss" => x -> nothing))
 
     return Denoiser{Float32}(model, args...)
 end
