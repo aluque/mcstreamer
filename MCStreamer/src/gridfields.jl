@@ -4,7 +4,8 @@
     Some fields (of type `A1`) contain an extra dimension for the thread id, 
     which allows to update in parallel.
 """
-struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{Int}}
+struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{Int},
+                  AL}
     grid::Grid{T}
     
     # Fixed charges
@@ -49,6 +50,8 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # For Russian roulette: next stop
     x::A
 
+    # Array of locks for concurrence
+    locks::AL
     
     """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
@@ -66,8 +69,11 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         wtotal = calloc_centers(T, grid)
         wcum = calloc_centers(T, grid)
         x = calloc_centers(T, grid)
-        new{T,typeof(qfixed),typeof(q),typeof(p)}(grid, qfixed, qpart, q0,
-                                                  q, ne, dne, u, er, ez, p, pk, wtotal, wcum, x)
+        locks = map(_ -> Threads.SpinLock(), p)
+
+        new{T,typeof(qfixed),typeof(q),typeof(p),typeof(locks)}(grid, qfixed, qpart, q0,
+                                                  q, ne, dne, u, er, ez, p, pk, wtotal, wcum, x,
+                                                  locks)
     end
 end
 

@@ -5,7 +5,7 @@
     particles cell-wise.
 """
 function resample!(popl, fields, ntarget, nmax)
-    (;grid, x, p, pk, wtotal, wcum) = fields
+    (;grid, x, p, pk, wtotal, wcum, locks) = fields
     wcum .= 0.0
     wtotal .= 0.0
     x .= 0
@@ -27,15 +27,16 @@ function resample!(popl, fields, ntarget, nmax)
             x[I] = samplemin(ntarget)
         end
     end
-
-    # Second pass: in cells with particle excess, remove particles
-    for i in 1:popl.n[]
+    
+    @batch for i in 1:popl.n[]
         k = LazyRow(popl.particles, i)
         k.active || continue
-
+        
         I = cellindex(grid, k.x)
         checkbounds(Bool, p, I) || continue
-
+        
+        
+        lock(locks[I])
         #= 
         A short description of the Russian roulette resampling that we do here:
         When the number of particles in a cell exceeds nmax we resample them into ntarget 
@@ -64,15 +65,17 @@ function resample!(popl, fields, ntarget, nmax)
             elseif p[I] < ntarget && k.w > 2
                 # Splitting
                 wnew = round(k.w / 2)
-                    index = add_particle!(popl, popl.particles[i])
+                index = add_particle!(popl, popl.particles[i])
                 popl.particles.w[index] = wnew
                 k.w = k.w - wnew
                 
                 p[I] += 1
             end
         end
+        unlock(locks[I])
     end
 end
+
 
 """
 Sample from the probability distribution of the minimum of `m` draws from the uniform
