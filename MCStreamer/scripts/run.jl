@@ -24,7 +24,7 @@ function metafmt(level::LogLevel, _module, group, id, file, line)
     return color, prefix, suffix
 end
 
-global_logger(ConsoleLogger(meta_formatter=metafmt))
+global_logger(ConsoleLogger(meta_formatter=metafmt, show_limited=false))
 
 using MCStreamer
 MCStreamer.main()
