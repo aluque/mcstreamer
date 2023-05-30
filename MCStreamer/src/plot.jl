@@ -134,6 +134,39 @@ function setlims(rlim, zlim)
     setzlim(zlim)
 end
 
+
+function h5export(fields::SavedGridFields, filename::String)
+    h5file = h5open(filename, "w")
+
+    # Save Grid
+    g_grid = create_group(h5file, "grid")
+    write(g_grid, "R", fields.grid.R)
+    write(g_grid, "L", fields.grid.L)
+    write(g_grid, "M", fields.grid.M)
+    write(g_grid, "N", fields.grid.N)
+    write(g_grid, "rc", collect(fields.grid.rc))
+    write(g_grid, "rf", collect(fields.grid.rf))
+    write(g_grid, "zc", collect(fields.grid.zc))
+    write(g_grid, "zf", collect(fields.grid.zf))
+
+    (;M, N) = fields.grid
+    
+    # Save OffsetMatrix arrays
+    write(h5file, "qfixed", fields.qfixed[1:M, 1:N])
+    write(h5file, "qpart", fields.qpart[1:M, 1:N])
+    write(h5file, "q0", fields.q0[1:M, 1:N])
+    write(h5file, "q", fields.q[1:M, 1:N])
+    write(h5file, "u", fields.u[1:M, 1:N])
+    write(h5file, "er", fields.er[1:M + 1, 1:N])
+    write(h5file, "ez", fields.ez[1:M, 1:N + 1])
+    write(h5file, "p", fields.p[1:M, 1:N])
+    write(h5file, "wtotal", fields.wtotal[1:M, 1:N])
+
+    close(h5file)
+end
+
+h5export(from::String, to::String) = h5export(load(from, "fields"), to)
+
 setrlim(rlim::Nothing) = nothing
 setrlim(rlim::AbstractVector) = plt.ylim(rlim)
 setzlim(zlim::Nothing) = nothing

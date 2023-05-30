@@ -43,8 +43,8 @@ include("gridfields.jl")
 include("freebc.jl")
 include("poisson.jl")
 include("fluid.jl")
-include("plot.jl")
 include("io.jl")
 include("initdens.jl")
+include("plot.jl")
 
 end # module
