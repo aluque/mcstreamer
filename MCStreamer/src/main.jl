@@ -283,8 +283,8 @@ function nsteps(mpopl, n, ntarget, nmax, efield, eb, Δt, Δt_poisson, Δt_outpu
                 @assert(isapprox(pre_total_weight, post_total_weight, rtol=1e-5),
                         "repackaging is not conserving the number of particles")
 
-                elapsed_shuffle = @elapsed shuffle!(popl)
-                @info "shuffle! electrons finalized in (seconds)" elapsed_shuffle
+                # elapsed_shuffle = @elapsed shuffle!(popl)
+                # @info "shuffle! electrons finalized in (seconds)" elapsed_shuffle
 
                 elapsed_resample = @elapsed resample!(popl, fields, ntarget, nmax)
                 @info "resample! electrons finalized in (seconds)" elapsed_resample
