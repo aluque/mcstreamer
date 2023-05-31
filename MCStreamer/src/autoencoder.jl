@@ -56,7 +56,7 @@ function denoise(d::Denoiser{T}, q) where T
 
     # move to julia Array (with copy)
     pred = copy((@view pypred[1, :, :, 1])')
-    d.rscale && addrscale(pred)
+    d.rscale && rmrscale(pred)
 
     return pred
 end
