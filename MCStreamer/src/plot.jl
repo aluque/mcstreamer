@@ -121,8 +121,12 @@ function plot(fname::String; save=false, vars=["edensity", "efield", "charge"], 
     end
 end
 
-function plot1(fname::String, var::String; save=false, kw...)
-    fields = load(fname, "fields");
+function plot1(fname::String, var::String; root=expanduser("~/data/denoise/init/"), save=false, kw...)
+    if fname[1] != "/"
+        fname = joinpath(root, fname)
+    end
+    
+    fields = load(joinpath(root, fname), "fields");
 
     savedir = save ? splitext(fname)[1] : nothing
 
@@ -177,3 +181,25 @@ _vlim(vlim1, vlim2::AbstractVector) = vlim2
 _vlim(vlim1, vlim2::Tuple) = vlim2
 
 
+# Line plots
+function plotaxis(id, istep, var; prefactor=1, root=expanduser("~/data/denoise/init/"), kwargs...)
+    step = fmt("04d", istep)
+    f = load(joinpath(root, "$(id)/$(step).jld"), "fields")
+    v = getfield(f, var)
+    plt.plot(prefactor .* dropdims(sum(v[1:1, :], dims=1), dims=1); kwargs...)    
+end
+
+function plotint(id, istep, var; root=expanduser("~/data/denoise/init/"), bndhack=true, kwargs...)
+    step = fmt("04d", istep)
+    f = load(joinpath(root, "$(id)/$(step).jld"), "fields")
+    v = getfield(f, var)
+    (;M, R, rc, zc) = f.grid
+    dr = R / M
+    if bndhack
+        v[end-1, :] .= 0
+    end
+    
+    @show size(v)
+    @views plt.plot(zc, dropdims(sum(@.(v[begin+1:end-1, begin+1:end-1] * rc * dr),
+                                     dims=1), dims=1); kwargs...)    
+end
