@@ -78,8 +78,8 @@ function addrscale(q)
 end
 
 function rmrscale(q)
-    for j in size(q, 3)
-        for i in size(q, 2)
+    for j in size(q, 2)
+        for i in size(q, 1)
             q[i, j] /= (i - 0.5)
         end
     end
