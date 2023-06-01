@@ -21,14 +21,10 @@ struct Denoiser{T}
     
     # The denoising will be active only after this time
     activ_time::T
-
-    # A hack to fiz boundary issues at r = R.
-    fix_bnd_hack::Bool
 end
 
 
-Denoiser{T}(model::PyObject, nn_range, q_range, rscale) where {T} = Denoiser(model, nn_range, q_range, rscale, 0, true)
-Denoiser{T}(model::PyObject, nn_range, q_range, rscale, activ_time) where {T} = Denoiser(model, nn_range, q_range, rscale, activ_time, true)
+Denoiser{T}(model::PyObject, nn_range, q_range, rscale) where {T} = Denoiser(model, nn_range, q_range, rscale, 0)
 
 """ 
     Denoiser(model_name::String, args...)
@@ -61,10 +57,6 @@ function denoise(d::Denoiser{T}, q) where T
     # move to julia Array (with copy)
     pred = copy((@view pypred[1, :, :, 1])')
 
-    if d.fix_bnd_hack
-        pred[end - 1, :] .= 0
-    end
-    
     d.rscale && rmrscale(pred)
 
     return pred
