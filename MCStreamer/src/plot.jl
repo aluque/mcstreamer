@@ -64,7 +64,7 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         plt.clf()
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
                        rf[i1:(i2 + 1)] ./ co.milli, q;
-                       cmap="seismic", vmin=vmin, vmax=vmax, kw...)
+                       cmap="bwr", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
@@ -79,7 +79,7 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         plt.clf()
         plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
                        rf[i1:(i2 + 1)] ./ co.milli, q,
-                       cmap="seismic", vmin=vmin, vmax=vmax, kw...)
+                       cmap="bwr", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
@@ -199,7 +199,6 @@ function plotint(id, istep, var; root=expanduser("~/data/denoise/init/"), bndhac
         v[end-1, :] .= 0
     end
     
-    @show size(v)
     @views plt.plot(zc, dropdims(sum(@.(v[begin+1:end-1, begin+1:end-1] * rc * dr),
                                      dims=1), dims=1); kwargs...)    
 end
