@@ -113,7 +113,14 @@ _particle_state_type_param(::Type{<:ParticleState{T}}) where T = T
 """
 function weight(popl::Population{PS}) where PS
     T = _particle_state_type_param(PS)
-    mapreduce(p -> p.active ? p.w : zero(T), +, eachparticle(popl))
+    weight = zero(T)
+    for p in eachparticle(popl)
+        if p.active
+            weight += p.w
+        end
+    end
+
+    return weight
 end
 
 
