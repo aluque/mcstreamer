@@ -193,12 +193,19 @@ function plotint(id, istep, var; root=expanduser("~/data/denoise/init/"), bndhac
     step = fmt("04d", istep)
     f = load(joinpath(root, "$(id)/$(step).jld"), "fields")
     v = getfield(f, var)
-    (;M, R, rc, zc) = f.grid
+    (;L, N, M, R, rc, zc) = f.grid
     dr = R / M
-    if bndhack
-        v[end-1, :] .= 0
-    end
+    dz = L / N
     
-    @views plt.plot(zc, dropdims(sum(@.(v[begin+1:end-1, begin+1:end-1] * rc * dr),
-                                     dims=1), dims=1); kwargs...)    
+    if bndhack
+        v[end - 1, :] .= 0
+    end
+
+    cs = dropdims(sum(@.(v[begin+1:end-1, begin+1:end-1] * rc * dr), dims=1), dims=1)
+    total = sum(cs) * dz
+
+    
+    @show total
+    
+    @views plt.plot(zc, cs; kwargs...)    
 end
