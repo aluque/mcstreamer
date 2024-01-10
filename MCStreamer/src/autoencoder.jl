@@ -71,16 +71,16 @@ function denoise(d::Denoiser, q, t)
 end
 
 function addrscale(q)
-    for j in size(q, 3)
-        for i in size(q, 2)
+    for j in axes(q, 3)
+        for i in axes(q, 2)
             q[1, i, j, 1] *= (i - 0.5)
         end
     end
 end
 
 function rmrscale(q)
-    for j in size(q, 2)
-        for i in size(q, 1)
+    for j in axes(q, 2)
+        for i in axes(q, 1)
             q[i, j] /= (i - 0.5)
         end
     end
