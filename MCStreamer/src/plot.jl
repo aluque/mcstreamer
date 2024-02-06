@@ -3,7 +3,8 @@
 =#
 
 function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
-               clim=nothing, savedir=nothing, charge_scale=1, grid=fields.grid, kw...)
+               clim=nothing, savedir=nothing, charge_scale=1, grid=fields.grid,
+               resample=1, bin=nothing, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
@@ -15,8 +16,8 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     # qpart_t = dropdims(sum(@view(fields.qpart[1:M, 1:N, :]), dims=3), dims=3)
 
     # q = qfixed_t .- qpart_t
-    @unpack rf, zf, rc, zc = grid
-    
+    (;rf, zf, rc, zc) = grid
+
     function xylabel()
         plt.xlabel("z (mm)")
         plt.ylabel("r (mm)")
@@ -24,37 +25,39 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     
     (i1, i2) = indexlims(rlim, rc, M)
     (j1, j2) = indexlims(zlim, zc, N)
-
+    s = resample
 
     function f_efield()
-        eabs = @. @views sqrt(0.25 * (fields.er[i1:i2, j1:j2] + fields.er[(i1 + 1):(i2 + 1), j1:j2])^2 +
-                              0.25 * (fields.ez[i1:i2, j1:j2] + fields.ez[i1:i2, (j1 + 1):(j2 + 1)])^2)
+        eabs = @. @views sqrt(0.25 * (fields.er[i1:s:i2, j1:s:j2] +
+                                      fields.er[(i1 + 1):s:(i2 + 1), j1:s:j2])^2 +
+                              0.25 * (fields.ez[i1:s:i2, j1:s:j2] +
+                                      fields.ez[i1:s:i2, (j1 + 1):s:(j2 + 1)])^2)
 
 
         plt.figure("$titleprefix Electric field")
         plt.clf()
         (vmin, vmax) = _vlim((nothing, nothing), clim)
-        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                       rf[i1:(i2 + 1)] ./ co.milli,
+        plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
+                       rf[i1:s:(i2 + 1)] ./ co.milli,
                        eabs, cmap="gnuplot2"; vmin, vmax, kw...)
         cbar = plt.colorbar(label="Electric field (V/m)")
         
     end
 
     function f_edensity()
-        ne = @views -fields.qpart[i1:i2, j1:j2]
+        ne = @views -fields.qpart[i1:s:i2, j1:s:j2]
         (vmin, vmax) = _vlim((1e15, 1e21), clim)
         lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
         plt.figure("$titleprefix Electron density")
         plt.clf()
-        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                       rf[i1:(i2 + 1)] ./ co.milli,
+        plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
+                       rf[i1:s:(i2 + 1)] ./ co.milli,
                        ne, cmap="gnuplot2", norm=lognorm; kw...)
         cbar = plt.colorbar(label="Electron density (m\$^{-3}\$)")
     end
     
     function f_charge()
-        q = @view(fields.q[i1:i2, j1:j2])
+        q = @view(fields.q[i1:s:i2, j1:s:j2])
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
@@ -62,14 +65,14 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         
         plt.figure("$titleprefix Charge density")
         plt.clf()
-        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                       rf[i1:(i2 + 1)] ./ co.milli, q;
+        plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
+                       rf[i1:s:(i2 + 1)] ./ co.milli, q;
                        cmap="bwr", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
     function f_charge0()
-        q = @view(fields.q0[i1:i2, j1:j2])
+        q = @view(fields.q0[i1:s:i2, j1:s:j2])
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
@@ -77,17 +80,29 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
 
         plt.figure("$titleprefix Noisy charge density")
         plt.clf()
-        plt.pcolormesh(zf[j1:(j2 + 1)] ./ co.milli,
-                       rf[i1:(i2 + 1)] ./ co.milli, q,
+        plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
+                       rf[i1:s:(i2 + 1)] ./ co.milli, q,
                        cmap="bwr", vmin=vmin, vmax=vmax, kw...)
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
+    function f_particles()
+        p = @view(fields.p[i1:s:i2, j1:s:j2])
+        plt.figure("$titleprefix Super-particle number")
+        plt.clf()
+        plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
+                       rf[i1:s:(i2 + 1)] ./ co.milli, p,
+                       cmap="gnuplot2", kw...)
+        cbar = plt.colorbar(label="Number of super-particles per cell")
+    end
     
-    Dict(["edensity" => f_edensity,
-          "efield" => f_efield,
-          "charge" => f_charge,
-          "charge0" => f_charge0])[var]()
+    
+    Dict("edensity" => f_edensity,
+         "efield" => f_efield,
+         "charge" => f_charge,
+         "charge0" => f_charge0,
+         "p" => f_particles,
+         "particles" => f_particles)[var]()
     
     if rlim != nothing && zlim!= nothing
         setlims(rlim / co.milli, zlim / co.milli)
@@ -99,6 +114,25 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         @info "Saving plot to" fname
         plt.savefig(fname, dpi=600)
     end
+end
+
+function ndbin(a::AbstractArray{T, D}, s) where {T, D}
+    ranges = ntuple(d -> first(axes(a, d)):s:last(axes(a, d)) - s, Val(D))
+    
+    subrange = ntuple(d -> 0:(s - 1), Val(D))
+
+    glb = CartesianIndices(ranges)
+    loc = CartesianIndices(subrange)
+
+    a1 = zeros(eltype(a), ntuple(d -> length(ranges[d]), Val(D)))
+    for I in glb
+        for J in loc
+            a1[I] += a[I + J]
+        end
+        a1[I] /= length(J)
+    end
+
+    return a1
 end
 
 
@@ -121,16 +155,20 @@ function plot(fname::String; save=false, vars=["edensity", "efield", "charge"], 
     end
 end
 
-function plot1(fname::String, var::String; root=expanduser("~/data/denoise/init/"), save=false, kw...)
-    if fname[1] != "/"
-        fname = joinpath(root, fname)
+function plot1(path::AbstractString, step::Int, var::String;
+               root=expanduser("~/data/denoise/final/"), save=false, titleprefix="", kw...)
+    fstep = format("{:04d}.jld", step)
+    if path[1] != "/"
+        path = joinpath(root, path, fstep)
     end
+
+    titleprefix = "[$(splitpath(path)[end - 1]): $fstep] $titleprefix"
     
-    fields = load(joinpath(root, fname), "fields");
+    fields = load(joinpath(root, path), "fields");
 
-    savedir = save ? splitext(fname)[1] : nothing
+    savedir = save ? splitext(path)[1] : nothing
 
-    plot1(fields, var; savedir, kw...)
+    plot1(fields, var; savedir, titleprefix, kw...)
 end
 
 function setlims(rlim, zlim)
