@@ -26,6 +26,8 @@ end
 
 Denoiser{T}(model::PyObject, nn_range, q_range, rscale) where {T} = Denoiser(model, nn_range, q_range, rscale, 0)
 
+isactive(d::Denoiser, t) = t > d.activ_time
+
 """ 
     Denoiser(model_name::String, args...)
 
@@ -93,7 +95,36 @@ end
 Rescale a number x such that the interval (a1, b1) is mapped to (a2, b2). 
 """
 rescale(x, (a1, b1), (a2, b2)) = a2 + (x - a1) * (b2 - a2) / (b1 - a1)
+
+"""
+A denoiser with a cutout rectangle, where the noisy charge is copied to the result.
+"""
+struct CutoutDenoiser{T}
+    "Base denoiser"
+    base::Denoiser{T}
+
+    "Cutout rectangle"
+    cutout::NTuple{2, UnitRange{Int}}
+end
+
+function denoise(d::CutoutDenoiser, q, t)
+    if t >= d.base.activ_time
+        return denoise(d, q)
+    else
+        return q
+    end
+end
+
+function denoise(d::CutoutDenoiser{T}, q) where T
+    (;base, cutout) = d
+    q1 = copy(q)
+    q1[cutout...] .= 0
     
+    p1 = denoise(base, q)
+    p1[cutout...] .+= view(q, cutout...)
+
+    return p1
+end
 
 """
     A Null denoiser that does nothing.

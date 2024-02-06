@@ -32,7 +32,7 @@ using JuMC: NewParticleOutcome, RemoveParticleOutcome, StateChangeOutcome, Repla
 import JuMC
 
 include("autoencoder.jl")
-using .Autoencoder: Denoiser, denoise, NullDenoiser
+using .Autoencoder: Denoiser, denoise, CutoutDenoiser, NullDenoiser
 
 include("timesteps.jl")
 

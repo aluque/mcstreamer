@@ -155,6 +155,11 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         rscale = get(input["denoise"], "rscale", false)
         denoiser = Denoiser(modelfname, (-1.0, 1.0),
                             Tuple(input["denoise"]["q_range"]), rscale, activ_time)
+        if haskey(input["denoise"], "cutout")
+            c = Tuple(UnitRange(parse.(Int, split(s, ":"))...) for s in input["denoise"]["cutout"])
+            denoiser = CutoutDenoiser(denoiser, c)
+        end
+        
     else
         denoiser = NullDenoiser()
     end
