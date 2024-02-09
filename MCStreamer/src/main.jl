@@ -98,7 +98,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
         
         loader = Dict("am" => AMLoader, "afivo" => AfivoLoader)[format](nefile, qfile)
         fluid_threshold = get(input["init_files"], "fluid_threshold", Inf)
-        init_particles = initfromfiles!(m, fields, loader; fluid_threshold)
+        init_particles = initfromfiles!(m, fields, loader; fluid_threshold, maxp)
         if isfinite(fluid_threshold)
             hasfluid = true
         end

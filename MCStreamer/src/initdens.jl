@@ -61,7 +61,7 @@ end
     Load the corresponding files from `nefile` and `qfile` and sample electrons with them, using a maximum
     of particles per cell ncellmax.
 """
-function initfromfiles!(method, fields, loader; fluid_threshold=Inf)
+function initfromfiles!(method, fields, loader; fluid_threshold=Inf, maxp=Inf)
     (;grid, qfixed) = fields
     (;M, N) = grid
 
@@ -90,11 +90,11 @@ function initfromfiles!(method, fields, loader; fluid_threshold=Inf)
             z = dz(grid) * rand() + grid.zf[j]
             phi = 2π * rand()
             x = @SVector [r * cos(phi), r * sin(phi), z]
+
+            if length(s) >= maxp
+                throw(ErrorException("Particle limit reached"))
+            end
             push!(s, ElectronState(x, v0, w))
-        end
-        if length(s) > 10^9
-            @info "Particle limit reached" i j
-            break 
         end
     end
     
