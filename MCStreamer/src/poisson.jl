@@ -11,7 +11,7 @@ function poisson!(fields, mpopl, eb, mg, ws, denoiser, t, outpath)
     
     fields.qpart .= 0
     
-    density!(grid, fields.qpart, mpopl, Electron, -1.0)
+    density!(grid, fields.qpart, mpopl, Electron, fields, -1.0)
 
     # Summing along threads
     q0 .= 0
@@ -62,11 +62,12 @@ end
     Update array `arr` with the densities of particles of type 
     `ptype` contained in `mpopl`.
 """
-function density!(grid, arr, mpopl, ptype, val=1.0) where sym
+function density!(grid, arr, mpopl, ptype, fields, val=1.0) where sym
     popl = get(mpopl, ptype)
     
     @inbounds Threads.@threads for p in eachparticle(popl)
         p.active || continue
+
         I = cellindext(grid, p.x)
 
         checkbounds(Bool, arr, I) || continue
@@ -75,6 +76,9 @@ function density!(grid, arr, mpopl, ptype, val=1.0) where sym
         # the rc field for dV.
         checkbounds(Bool, grid.rc, I[1]) || continue
         
+        lock(fields.thread_locks[I[length(I)]])
         arr[I] += p.w * val / dV(grid, I[1])
+        unlock(fields.thread_locks[I[length(I)]])
+
     end
 end

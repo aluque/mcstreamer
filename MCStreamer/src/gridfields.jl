@@ -53,6 +53,11 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
     # Array of locks for concurrence
     locks::AL
     
+    # A lock for each thread. This is necesssary because we do not have guarantee that two tasks
+    # won't share the same threadid so in updating operations it is important to ensure that
+    # not two tasks are accessing the same cell.
+    thread_locks::Vector{Threads.SpinLock}
+    
     """ Allocate fields for a grid `grid`. """
     function GridFields(grid::Grid{T}) where T
         qfixed = calloc_centers_threads(T, grid)
@@ -70,10 +75,11 @@ struct GridFields{T,A1<:AbstractArray{T},A<:AbstractArray{T},AI<:AbstractArray{I
         wcum = calloc_centers(T, grid)
         x = calloc_centers(T, grid)
         locks = map(_ -> Threads.SpinLock(), p)
-
+        thread_locks = map(_ -> Threads.SpinLock(), 1:Threads.nthreads())
+        
         new{T,typeof(qfixed),typeof(q),typeof(p),typeof(locks)}(grid, qfixed, qpart, q0,
                                                   q, ne, dne, u, er, ez, p, pk, wtotal, wcum, x,
-                                                  locks)
+                                                  locks, thread_locks)
     end
 end
 
@@ -171,10 +177,13 @@ function (fieldinterp::FieldInterp)(x)
 
     # Large electric fields are surely a bug
     if norm(efield) > 1e8
-        jldsave("MCStreamer_error_fields.jld", false; fields);
-        @info "Too high electric field" x efield er1 ez1
+        lock(fields.thread_locks[begin]) do 
         
-        error("Too high electric field")
+            jldsave("MCStreamer_error_fields.jld", false; fields);
+            @info "Too high electric field" x efield er1 ez1
+        
+            error("Too high electric field")
+        end
     end
 
     return efield
@@ -196,7 +205,9 @@ function track1(fields, x, val)
     checkbounds(Bool, fields.qfixed, I) || return nothing
     checkbounds(Bool, fields.grid.rc, I[1]) || return nothing
 
+    lock(fields.thread_locks[I[length(I)]])
     fields.qfixed[I] += val / dV(fields.grid, I[1])
+    unlock(fields.thread_locks[I[length(I)]])
 
     nothing
 end

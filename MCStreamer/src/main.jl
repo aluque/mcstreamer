@@ -119,7 +119,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     mpopl = MultiPopulation(population_index...)
                             
     if !("init_files" in keys(input))
-        density!(grid, fields.qfixed, mpopl, Electron, 1.0)
+        density!(grid, fields.qfixed, mpopl, Electron, fields, 1.0)
     end
     
     # Poisson
@@ -186,7 +186,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     end
     
     # k = collrates(pind, Electron())
-    density!(grid, fields.qpart, mpopl, Electron, -1.0)
+    density!(grid, fields.qpart, mpopl, Electron, fields, -1.0)
 
     (;grid, mpopl, efield, Δt, fields)
 end
