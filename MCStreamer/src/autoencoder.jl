@@ -120,7 +120,7 @@ function denoise(d::CutoutDenoiser{T}, q) where T
     q1 = copy(q)
     q1[cutout...] .= 0
     
-    p1 = denoise(base, q)
+    p1 = denoise(base, q1)
     p1[cutout...] .+= view(q, cutout...)
 
     return p1
