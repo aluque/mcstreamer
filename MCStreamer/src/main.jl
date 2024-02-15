@@ -176,7 +176,7 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     
     if debug
-        return (;mpopl, efield, eb, Δt, fields, mg, ws, grid, input)
+        return (;mpopl, efield, eb, Δt, fields, mg, ws, grid, denoiser, input)
     end
 
     if run
