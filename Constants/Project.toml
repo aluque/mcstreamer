@@ -1,0 +1,4 @@
+name = "Constants"
+uuid = "97b6df43-329e-46a4-b57f-f766ebb68870"
+authors = ["Alejandro Luque <aluque@iaa.es>"]
+version = "0.1.0"
