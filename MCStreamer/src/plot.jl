@@ -3,8 +3,8 @@
 =#
 
 function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
-               clim=nothing, savedir=nothing, charge_scale=1, grid=fields.grid,
-               resample=1, bin=nothing, kw...)
+               clim=nothing, savedir=nothing, savename=nothing, charge_scale=1, grid=fields.grid,
+               resample=1, bin=nothing, log=false, kw...)
     plt.matplotlib.pyplot.style.use("granada")
     if !isnothing(savedir)
         isdir(savedir) || mkpath(savedir)
@@ -27,25 +27,33 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     (j1, j2) = indexlims(zlim, zc, N)
     s = resample
 
-    function f_efield()
-        eabs = @. @views sqrt(0.25 * (fields.er[i1:s:i2, j1:s:j2] +
-                                      fields.er[(i1 + 1):s:(i2 + 1), j1:s:j2])^2 +
-                              0.25 * (fields.ez[i1:s:i2, j1:s:j2] +
-                                      fields.ez[i1:s:i2, (j1 + 1):s:(j2 + 1)])^2)
+    function f_efield(f)
+        eabs = @. @views sqrt(0.25 * (f.er[i1:s:i2, j1:s:j2] +
+                                      f.er[(i1 + 1):s:(i2 + 1), j1:s:j2])^2 +
+                              0.25 * (f.ez[i1:s:i2, j1:s:j2] +
+                                      f.ez[i1:s:i2, (j1 + 1):s:(j2 + 1)])^2)
 
 
         plt.figure("$titleprefix Electric field")
         plt.clf()
         (vmin, vmax) = _vlim((nothing, nothing), clim)
+        if log
+            vmin = max(vmin, vmax / 1e2)
+            lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
+            kw = (;norm=lognorm, kw...)
+        else
+            kw = (;vmin, vmax, kw...)
+        end
+        
         plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
                        rf[i1:s:(i2 + 1)] ./ co.milli,
-                       eabs, cmap="gnuplot2"; vmin, vmax, kw...)
+                       eabs, cmap="gnuplot2"; kw...)
         cbar = plt.colorbar(label="Electric field (V/m)")
         
     end
 
-    function f_edensity()
-        ne = @views -fields.qpart[i1:s:i2, j1:s:j2]
+    function f_edensity(f)
+        ne = @views -f.qpart[i1:s:i2, j1:s:j2]
         (vmin, vmax) = _vlim((1e15, 1e21), clim)
         lognorm = plt.matplotlib.colors.LogNorm(;vmin, vmax)
         plt.figure("$titleprefix Electron density")
@@ -56,8 +64,8 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         cbar = plt.colorbar(label="Electron density (m\$^{-3}\$)")
     end
     
-    function f_charge()
-        q = @view(fields.q[i1:s:i2, j1:s:j2])
+    function f_charge(f)
+        q = @view(f.q[i1:s:i2, j1:s:j2])
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
@@ -71,8 +79,8 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
-    function f_charge0()
-        q = @view(fields.q0[i1:s:i2, j1:s:j2])
+    function f_charge0(f)
+        q = @view(f.q0[i1:s:i2, j1:s:j2])
         q .*= charge_scale
         qmax, qmin = extrema(q)
         absmax = max(abs(qmax), abs(qmin)) * charge_scale
@@ -86,12 +94,12 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
         cbar = plt.colorbar(label=L"Charge density (C/m$^3$)")        
     end
 
-    function f_particles()
-        p = @view(fields.p[i1:s:i2, j1:s:j2])
+    function f_particles(f)
+        p = @view(f.p[i1:s:i2, j1:s:j2])
         plt.figure("$titleprefix Super-particle number")
         plt.clf()
         plt.pcolormesh(zf[j1:s:(j2 + 1)] ./ co.milli,
-                       rf[i1:s:(i2 + 1)] ./ co.milli, p,
+                       rf[i1:s:(i2 + 1)] ./ co.milli, p;
                        cmap="gnuplot2", kw...)
         cbar = plt.colorbar(label="Number of super-particles per cell")
     end
@@ -102,7 +110,7 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
          "charge" => f_charge,
          "charge0" => f_charge0,
          "p" => f_particles,
-         "particles" => f_particles)[var]()
+         "particles" => f_particles)[var](fields)
     
     if rlim != nothing && zlim!= nothing
         setlims(rlim / co.milli, zlim / co.milli)
@@ -110,7 +118,11 @@ function plot1(fields, var::String; titleprefix="", rlim=nothing, zlim=nothing,
     xylabel()
 
     if !isnothing(savedir)
-        fname = joinpath(savedir, "$(var).png")
+        if isnothing(savename)
+            savename = "$(var).png"
+        end
+        
+        fname = joinpath(savedir, savename)
         @info "Saving plot to" fname
         plt.savefig(fname, dpi=600)
     end
@@ -118,18 +130,20 @@ end
 
 function ndbin(a::AbstractArray{T, D}, s) where {T, D}
     ranges = ntuple(d -> first(axes(a, d)):s:last(axes(a, d)) - s, Val(D))
+    @show ranges
     
     subrange = ntuple(d -> 0:(s - 1), Val(D))
 
     glb = CartesianIndices(ranges)
     loc = CartesianIndices(subrange)
 
-    a1 = zeros(eltype(a), ntuple(d -> length(ranges[d]), Val(D)))
-    for I in glb
+    a1 = zeros(eltype(a), axes(glb))
+    for I1 in CartesianIndices(axes(glb))
+        I = glb[I1]
         for J in loc
-            a1[I] += a[I + J]
+            a1[I1] += a[I + J]
         end
-        a1[I] /= length(J)
+        a1[I1] /= length(loc)
     end
 
     return a1
@@ -156,7 +170,8 @@ function plot(fname::String; save=false, vars=["edensity", "efield", "charge"], 
 end
 
 function plot1(path::AbstractString, step::Int, var::String;
-               root=expanduser("~/data/denoise/final/"), save=false, titleprefix="", kw...)
+               root=expanduser("~/data/denoise/final/"), save=false, titleprefix="",
+               subtract=nothing, kw...)
     fstep = format("{:04d}.jld", step)
     if path[1] != "/"
         path = joinpath(root, path, fstep)
@@ -165,7 +180,13 @@ function plot1(path::AbstractString, step::Int, var::String;
     titleprefix = "[$(splitpath(path)[end - 1]): $fstep] $titleprefix"
     
     fields = load(joinpath(root, path), "fields");
-
+    if !isnothing(subtract)
+        path1 = joinpath(root, subtract, fstep)
+        fields1 = load(joinpath(root, path1), "fields");
+        subtract!(fields, fields1)
+        titleprefix = "diff: $titleprefix"
+    end
+    
     savedir = save ? splitext(path)[1] : nothing
 
     plot1(fields, var; savedir, titleprefix, kw...)
@@ -174,6 +195,15 @@ end
 function setlims(rlim, zlim)
     setrlim(rlim)
     setzlim(zlim)
+end
+
+function subtract!(f1, f2)
+    for name in fieldnames(SavedGridFields)
+        name == :grid && continue
+        v1 = getfield(f1, name)
+        v2 = getfield(f2, name)
+        v1 .-= v2
+    end
 end
 
 
