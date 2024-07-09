@@ -1,6 +1,6 @@
 module MCStreamer
 
-
+using Random
 using HDF5
 using StaticArrays 
 using Distributions: Poisson

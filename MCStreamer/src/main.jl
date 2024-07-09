@@ -21,6 +21,11 @@ function main(finput=ARGS[1]; debug=false, tmax=nothing, run=true)
     
     @info "Input read from $finput" * "\n" * String(take!(io))
 
+    # Set random seed
+    if "rng_seed" in keys(input)
+        Random.seed!(input["rng_seed"])
+    end
+    
     nair::Float64 = get(input, "nair", co.nair)
     
     L::Float64 = input["domain"]["L"]
