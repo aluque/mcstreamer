@@ -1,0 +1,62 @@
+## Wed Sep 27 22:32:11 2023 : bg12_15kV_p40_l6_fluid.toml
+## Denoising with the charge-conserving model
+
+# External electric field (in Td)
+eb = 15.0
+field_units = "kV/cm"
+nair = 2.6516467267620896e25
+
+# Initial number of particles
+n = 10000
+
+# Maximum number of superparticles
+maxp = 2e9
+
+# Max. superparticles per cell
+ntarget = 10
+nmax = 15
+
+# Time step
+dt = 1e-12
+
+tmax = 1e-7
+
+cross_sections = ["../cross_sections/LXCat-June2013.json", "../cross_sections/photo.json"]
+#cross_sections = ["cross_sections/LXCat-June2013.json"]
+
+rng_seed = 1
+
+[domain]
+# Dimensions of the full domain
+R = 0.015
+L = 0.1
+M = 1536
+N = 10240
+
+[photoionization]
+photon_weight = 1.0
+photon_multiplier = 1000.0
+
+[init_files]
+ne_file = "afivo/streamer_cyl_denoising_000018.hdf"
+q_file = "afivo/streamer_cyl_denoising_000018.hdf"
+method = "poisson"
+format = "afivo"
+fluid_threshold = 1e20
+
+[seed]
+# Location and width of the initial seed
+z0 = 1e-2
+w  = 1e-4
+
+# Time intervals for updating stuff
+[interval]
+poisson = 1e-12
+output = 1e-10
+resample = 1e-12
+
+[denoise]
+model = "../conserv/x1-l6m4-p10-qweight-reg-a100-lr6-ext__ft3-2/model"
+q_range = [-1.0, 1.0]
+rscale = true
+cutout = ['1:1024', '1:2560']
