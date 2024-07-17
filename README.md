@@ -14,7 +14,7 @@ The code contains several julia packages:
 
 ## Running streamer simulations
 The streamer code `MCStreamer` reads input parameters from a `.toml` file. An example is provided in the
-file `MCStreamer`. An example to start a simulation with 32 parallel threads is:
+file `MCStreamer/samples/input.toml`. An example to start a simulation with 32 parallel threads is:
 
 ```
 julia -t 32 --project=/path/to/jumc/MCStreamer/ /path/to/jumc/MCStreamer/scripts/run.jl input.toml
